@@ -383,6 +383,8 @@ mod test {
             Token::KeyWord(Keyword::Drop),
             Token::KeyWord(Keyword::Table),
             Token::Ident("TABLE_NAME_1".to_string()),
+            Token::Semicolon,
+            Token::Eof,
         ];
 
         for t in result {

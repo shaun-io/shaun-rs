@@ -1,6 +1,6 @@
 use std::fmt;
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
 pub enum Keyword {
     And,
     As,

@@ -1,4 +1,3 @@
 
-pub enum Expression {
-    
-}
+#[derive(Eq, PartialEq, Debug)]
+pub enum Expression {}
