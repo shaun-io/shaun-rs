@@ -6,12 +6,18 @@ mod lexer;
 mod stmt;
 pub mod token;
 
+use core::default;
+
 use column::Column;
 use data_type::DataType;
 use keyword::Keyword;
 use lexer::Lexer;
 use stmt::Statement;
 use token::Token;
+
+use log::{debug, error, info};
+
+use self::stmt::CreateTableStmt;
 
 pub struct Parser {
     lexer: lexer::Lexer,
@@ -137,7 +143,44 @@ impl Parser {
         // CREATE TABLE table_name
         //  (xxx_name xxx_addr xxx_addr xxx_addr,
         //  xxx, xxx);;
-        unimplemented!()
+        self.next_if_keyword(Keyword::Table);
+        let name = self.next_ident();
+        let table_name;
+        match name {
+            Ok(n) => {
+                table_name = n;
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        }
+        self.next_if_token(Token::LeftParen);
+
+        let mut columns = Vec::new();
+        loop {
+            columns.push(self.parse_column()?);
+            if let token = self.next_token() {
+                match token {
+                    Token::Comma => continue,
+                    Token::RightParen => break,
+                    _ => {
+                        return Err(format!(
+                            "except token Comma or RightParen, but get {:?}",
+                            token
+                        ))
+                    }
+                }
+            }
+        }
+
+        if !self.next_if_token(Token::Semicolon) {
+            return Err(format!("except token Semicolon, bu get {}", self.pre_token));
+        }
+
+        Ok(Statement::CreateTable(CreateTableStmt {
+            columns: columns,
+            table_name: table_name,
+        }))
     }
 
     fn parse_column(&mut self) -> Result<Column, String> {
@@ -171,6 +214,7 @@ impl Parser {
                 Token::KeyWord(Keyword::String) => DataType::String,
 
                 t => {
+                    dbg!(format!("unexpected token: {}", t));
                     return Err(format!("unexpected token: {}", t));
                 }
             },
@@ -181,8 +225,7 @@ impl Parser {
             index: false,
             references: None,
         };
-
-        Err("e".to_string())
+        Ok(_column)
     }
 
     fn parse_drop_stmt(&mut self) -> Result<Statement, String> {
@@ -235,7 +278,7 @@ mod test {
 
     use super::stmt::*;
     use super::*;
-    use log::error;
+    use log::{error, info};
 
     static LOG_INIT: std::sync::Once = std::sync::Once::new();
 
@@ -244,6 +287,56 @@ mod test {
         LOG_INIT.call_once(|| {
             env_logger::init();
         });
+    }
+
+    #[test]
+    fn parse_create_test() {
+        let sql = "create table shaun (c1 int, c2 string, c3 text);";
+        let mut parser = Parser::new_parser(sql.to_owned());
+        let result = Statement::CreateTable(CreateTableStmt {
+            columns: vec![
+                column::Column {
+                    name: "c1".to_string(),
+                    data_type: DataType::Int,
+                    primary_key: false,
+                    nullable: None,
+                    default: None,
+                    unique: false,
+                    index: false,
+                    references: None,
+                },
+                column::Column {
+                    name: "c2".to_string(),
+                    data_type: DataType::String,
+                    primary_key: false,
+                    nullable: None,
+                    default: None,
+                    unique: false,
+                    index: false,
+                    references: None,
+                },
+                column::Column {
+                    name: "c3".to_string(),
+                    data_type: DataType::String,
+                    primary_key: false,
+                    nullable: None,
+                    default: None,
+                    unique: false,
+                    index: false,
+                    references: None,
+                },
+            ],
+            table_name: "shaun".to_string(),
+        });
+        match parser.parse_stmt() {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(err) => {
+                dbg!(format!("get error: {}", err));
+                assert!(false)
+            }
+        }
     }
 
     #[test]

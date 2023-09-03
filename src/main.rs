@@ -1,3 +1,4 @@
+pub mod errors;
 pub mod parser;
 
 use parser::token::print_hello_wolrd;

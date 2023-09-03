@@ -1,4 +1,5 @@
 use super::column::Column;
+use std::fmt::Display;
 
 #[derive(Eq, PartialEq, Debug)]
 pub enum Statement {
