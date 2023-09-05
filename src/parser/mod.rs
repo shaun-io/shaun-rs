@@ -13,8 +13,6 @@ use lexer::Lexer;
 use stmt::Statement;
 use token::Token;
 
-use log::{debug, error};
-
 pub struct Parser {
     lexer: lexer::Lexer,
     pre_token: token::Token,
@@ -122,6 +120,7 @@ impl Parser {
         }
     }
 
+    #[allow(dead_code)]
     fn parse_ddl_stmt(&mut self) -> Result<Statement, String> {
         unimplemented!()
     }
@@ -138,31 +137,12 @@ impl Parser {
         // CREATE TABLE table_name
         //  (xxx_name xxx_addr xxx_addr xxx_addr,
         //  xxx, xxx);;
-        self.next_if_keyword(Keyword::Table);
-        let name = self.next_ident();
-        let table_name;
-        match name {
-            Ok(n) => {
-                table_name = n;
-            }
-            Err(e) => {
-                return Err(e);
-            }
-        }
-        self.next_if_token(Token::LeftParen);
-
-        // let columns = Vec::new();
-        // loop {}
-
-        // Ok(Statement::CreateTable(CreateTableStmt {
-        //     table_name: table_name,
-        // }))
-        Err(format!("unimplemented"))
+        unimplemented!()
     }
 
     fn parse_column(&mut self) -> Result<Column, String> {
         let name = self.next_ident();
-        let mut column_name;
+        let column_name;
 
         match name {
             Ok(n) => {
@@ -173,7 +153,7 @@ impl Parser {
             }
         }
 
-        let column = column::Column {
+        let _column = column::Column {
             name: column_name,
             data_type: match self.next_token() {
                 Token::KeyWord(Keyword::Bool) => DataType::Bool,
@@ -255,6 +235,7 @@ mod test {
 
     use super::stmt::*;
     use super::*;
+    use log::error;
 
     static LOG_INIT: std::sync::Once = std::sync::Once::new();
 

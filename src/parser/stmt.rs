@@ -1,4 +1,3 @@
-use std::fmt::Display;
 use super::column::Column;
 
 #[derive(Eq, PartialEq, Debug)]
@@ -55,7 +54,7 @@ impl std::fmt::Display for BeginStmt {
 pub struct ExplainStmt {}
 #[derive(Eq, PartialEq, Debug)]
 pub struct CreateTableStmt {
-    pub columns: Vec::<Column>,
+    pub columns: Vec<Column>,
     pub table_name: String,
 }
 #[derive(Eq, PartialEq, Debug)]
