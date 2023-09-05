@@ -7,11 +7,11 @@ mod stmt;
 pub mod token;
 
 use column::Column;
+use data_type::DataType;
 use keyword::Keyword;
 use lexer::Lexer;
 use stmt::Statement;
 use token::Token;
-use data_type::DataType;
 
 use log::{debug, error};
 
@@ -151,12 +151,13 @@ impl Parser {
         }
         self.next_if_token(Token::LeftParen);
 
-        let columns = Vec::new();
-        loop {}
+        // let columns = Vec::new();
+        // loop {}
 
-        Ok(Statement::CreateTable(CreateTableStmt {
-            table_name: table_name,
-        }))
+        // Ok(Statement::CreateTable(CreateTableStmt {
+        //     table_name: table_name,
+        // }))
+        Err(format!("unimplemented"))
     }
 
     fn parse_column(&mut self) -> Result<Column, String> {
@@ -200,7 +201,6 @@ impl Parser {
             index: false,
             references: None,
         };
-
 
         Err("e".to_string())
     }
@@ -256,9 +256,13 @@ mod test {
     use super::stmt::*;
     use super::*;
 
+    static LOG_INIT: std::sync::Once = std::sync::Once::new();
+
     #[test]
     fn init() {
-        env_logger::init();
+        LOG_INIT.call_once(|| {
+            env_logger::init();
+        });
     }
 
     #[test]
