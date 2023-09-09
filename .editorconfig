@@ -4,6 +4,6 @@ root = true
 [*]
 charset = utf-8
 indent_style = space
-
+10
 [*.rs]
 indent_size = 4
