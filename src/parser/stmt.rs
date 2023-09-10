@@ -24,7 +24,7 @@ impl std::fmt::Display for Statement {
                 write!(f, "Statement: Commit")
             }
             _ => {
-                write!(f, "Statment: Unknown")
+                write!(f, "Statement: Unknown")
             }
         }
     }

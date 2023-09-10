@@ -65,6 +65,6 @@ impl std::fmt::Display for Token {
     }
 }
 
-pub fn print_hello_wolrd() {
+pub fn print_hello_world() {
     println!("hello, world!");
 }
