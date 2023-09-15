@@ -31,11 +31,7 @@ fn main() {
 
         match io::stdin().read_line(&mut input) {
             Ok(_) => {
-                if input.as_bytes()[0] as char == 'q'
-                    && input.as_bytes()[1] as char == 'u'
-                    && input.as_bytes()[2] as char == 'i'
-                    && input.as_bytes()[3] as char == 't'
-                {
+                if input.trim() == "quit" {
                     break;
                 }
                 l.update(input.clone());

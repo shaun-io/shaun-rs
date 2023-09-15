@@ -506,6 +506,7 @@ impl Parser {
         }
     }
 
+    // (1 + 2)
     fn parse_expression(&mut self, precedence: Precedence) -> Result<Option<Expression>, String> {
         if !self.is_prefix_oper() {
             debug!("No prefixOperatorFunc for: {}", &self.pre_token);
@@ -519,7 +520,6 @@ impl Parser {
             self.pre_token, self.peek_token, lhs
         );
         debug!("{:?} {:?}", precedence, self.peek_token_predence());
-
         while self.pre_token != Token::Semicolon && precedence < self.peek_token_predence() {
             if !self.is_infix_oper() {
                 debug!(
@@ -1150,5 +1150,11 @@ mod test {
                 assert!(false);
             }
         }
+    }
+
+    #[test]
+    fn parse_select_test() {
+        let p = Parser::new_parser("SELECT c1 AS c2 FROM table_1".to_owned());
+
     }
 }
