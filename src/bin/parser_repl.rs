@@ -1,8 +1,7 @@
 use std::io;
 use std::io::Write;
 
-use shaun::parser::lexer::{self};
-use shaun::parser::token::Token;
+use shaun::parser::Parser;
 
 fn main() {
     env_logger::Builder::new()
@@ -22,11 +21,11 @@ fn main() {
 
     let green = "\x1b[32m";
     let default = "\x1b[0m";
-    let mut l = lexer::Lexer::new_lexer("".to_owned());
+    let mut p = Parser::new_parser("".to_owned());
     let mut input = String::new();
     loop {
         input.clear();
-        print!("{green}lexer>{default} ");
+        std::print!("{green}parser> {default}");
         std::io::stdout().flush().unwrap();
 
         match io::stdin().read_line(&mut input) {
@@ -38,16 +37,13 @@ fn main() {
                 {
                     break;
                 }
-                l.update(input.clone());
-                loop {
-                    let t = l.next_token();
-                    match t {
-                        Token::Eof => {
-                            break;
-                        }
-                        _ => {
-                            println!("{t}");
-                        }
+                p.update(&input);
+                match p.parse_stmt() {
+                    Ok(s) => {
+                        println!("{:?}", s);
+                    }
+                    Err(e) => {
+                        println!("ParseErr: {:?}", e);
                     }
                 }
             }

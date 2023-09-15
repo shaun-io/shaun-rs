@@ -42,7 +42,7 @@ impl Parser {
         p.pre_token = p.peek_token.clone();
         p.peek_token = p.lexer.next_token();
 
-        p        
+        p
     }
 
     pub fn update(&mut self, sql_str: &str) {
@@ -466,6 +466,15 @@ impl Parser {
         *self.next_token() == t
     }
 
+    fn peek_if_token(&mut self, t: Token) -> bool {
+        if self.peek_token == t {
+            self.next_token();
+            return true;
+        }
+
+        false
+    }
+
     fn next_if_keyword(&mut self, k: Keyword) -> bool {
         *self.next_token() == Token::KeyWord(k)
     }
@@ -503,15 +512,21 @@ impl Parser {
             return Ok(None);
         }
 
-        let mut lhs = self.parse_prefix_expr()?;
+        let mut lhs = self.parse_prefix_expr()?.unwrap();
 
-        debug!("pre_token {:?}", self.pre_token);
+        debug!(
+            "pre_token {:?} peek_token: {:?} lhs: {:?}",
+            self.pre_token, self.peek_token, lhs
+        );
+        debug!("{:?} {:?}", precedence, self.peek_token_predence());
 
         while self.pre_token != Token::Semicolon && precedence < self.peek_token_predence() {
-            
             if !self.is_infix_oper() {
-                debug!("No infixOperatorFunc for {} lhs: {:?}", &self.pre_token, lhs);
-                return Ok(None);
+                debug!(
+                    "No infixOperatorFunc for {} lhs: {:?}",
+                    &self.pre_token, lhs
+                );
+                return Ok(Some(lhs));
             }
             self.next_token();
             lhs = self.parse_infix_expr(lhs)?;
@@ -520,54 +535,62 @@ impl Parser {
         Ok(Some(lhs))
     }
 
-    fn parse_prefix_expr(&mut self) -> Result<Expression, String> {
-
+    fn parse_prefix_expr(&mut self) -> Result<Option<Expression>, String> {
         // 1 + 2 + 3
         match self.pre_token.clone() {
             Token::Exclamation => {
                 self.next_token();
 
-                Ok(Expression::Operation(Operation::Not(Box::new(
+                Ok(Some(Expression::Operation(Operation::Not(Box::new(
                     self.parse_expression(Precedence::Prefix)?.unwrap(),
-                ))))
+                )))))
             }
-            Token::Add => {
-                Ok(Expression::Operation(Operation::Assert(Box::new(
-                    self.parse_expression(Precedence::Prefix)?.unwrap(),
-                ))))
-            }
+            Token::Add => Ok(Some(Expression::Operation(Operation::Assert(Box::new(
+                self.parse_expression(Precedence::Prefix)?.unwrap(),
+            ))))),
             Token::Minus => {
                 self.next_token();
-                Ok(Expression::Operation(Operation::Negate(Box::new(
+                Ok(Some(Expression::Operation(Operation::Negate(Box::new(
                     self.parse_expression(Precedence::Prefix)?.unwrap(),
-                ))))
+                )))))
             }
             Token::Number(n) => {
                 // 如果包含 '.' 则说明是一个浮点数
                 if n.contains('.') {
-                    Ok(Expression::Literal(Literal::Float(
+                    Ok(Some(Expression::Literal(Literal::Float(
                         match n.parse::<f64>() {
                             Ok(n) => n,
                             Err(e) => {
                                 return Err(format!("ParseErr: {}", e));
                             }
                         },
-                    )))
+                    ))))
                 } else {
-                    Ok(Expression::Literal(Literal::Int(match n.parse::<i64>() {
-                        Ok(n) => n,
-                        Err(e) => {
-                            return Err(format!("ParseErr: {}", e));
-                        }
-                    })))
+                    Ok(Some(Expression::Literal(Literal::Int(
+                        match n.parse::<i64>() {
+                            Ok(n) => n,
+                            Err(e) => {
+                                return Err(format!("ParseErr: {}", e));
+                            }
+                        },
+                    ))))
                 }
+            }
+            Token::LeftParen => {
+                self.next_token();
+                let exp = self.parse_expression(Precedence::Lowest);
+                debug!("{:?} {:?}", self.pre_token, self.peek_token);
+                if !self.peek_if_token(Token::RightParen) {
+                    return Ok(None);
+                }
+
+                exp
             }
             _ => Err(format!("No prefixOperatorFunc for {}", self.pre_token)),
         }
     }
 
     fn parse_infix_expr(&mut self, exp: Expression) -> Result<Expression, String> {
-
         match self.pre_token {
             Token::Add => {
                 let precedence = match_precedence(self.pre_token.clone());
@@ -701,6 +724,7 @@ impl Parser {
             Token::Minus => true,
             Token::Add => true,
             Token::Number(_) => true,
+            Token::LeftParen => true,
             _ => false,
         }
     }
@@ -729,7 +753,6 @@ impl Parser {
     fn peek_token_predence(&mut self) -> Precedence {
         operator::match_precedence(self.peek_token.clone())
     }
-
 }
 
 #[cfg(test)]
@@ -1021,7 +1044,7 @@ mod test {
         let mut expr_selects = vec![];
         expr_selects.push((res_expr.clone(), Some("c1".to_owned())));
         let mut result = Statement::Select(SelectStmt {
-            selects: expr_selects,
+            selects: expr_selects.clone(),
             froms: vec![],
             wheres: None,
             group_by: None,
@@ -1040,6 +1063,92 @@ mod test {
             }
         }
 
-        // 
+        // parse bool expression
+        parser.update("SELECT 1 >= 10");
+        res_expr = Expression::Operation(Operation::GreaterThanOrEqual(
+            Box::new(Expression::Literal(Literal::Int(1))),
+            Box::new(Expression::Literal(Literal::Int(10))),
+        ));
+        expr_selects.clear();
+        expr_selects.push((res_expr, None));
+        let mut result = Statement::Select(SelectStmt {
+            selects: expr_selects.clone(),
+            froms: vec![],
+            wheres: None,
+            group_by: None,
+            having: None,
+            order: vec![],
+            offset: None,
+            limit: None,
+        });
+        match parser.parse_stmt() {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(e) => {
+                error!("expected: {:?} but get: {:?}", result, e);
+                assert!(false);
+            }
+        }
+        //
+        parser.update("SELECT (1 <= 10);");
+        res_expr = Expression::Operation(Operation::LessThanOrEqual(
+            Box::new(Expression::Literal(Literal::Int(1))),
+            Box::new(Expression::Literal(Literal::Int(10))),
+        ));
+        expr_selects.clear();
+        expr_selects.push((res_expr, None));
+        let mut result = Statement::Select(SelectStmt {
+            selects: expr_selects.clone(),
+            froms: vec![],
+            wheres: None,
+            group_by: None,
+            having: None,
+            order: vec![],
+            offset: None,
+            limit: None,
+        });
+        match parser.parse_stmt() {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(e) => {
+                error!("expected: {:?} but get: {:?}", result, e);
+                assert!(false);
+            }
+        }
+
+        parser.update("SELECT (1 <= 10) AND (1 >= 10.1);");
+        res_expr = Expression::Operation(Operation::And(
+            Box::new(Expression::Operation(Operation::LessThanOrEqual(
+                Box::new(Expression::Literal(Literal::Int(1))),
+                Box::new(Expression::Literal(Literal::Int(10))),
+            ))),
+            Box::new(Expression::Operation(Operation::GreaterThanOrEqual(
+                Box::new(Expression::Literal(Literal::Int(1))),
+                Box::new(Expression::Literal(Literal::Float(10.1))),
+            ))),
+        ));
+        expr_selects.clear();
+        expr_selects.push((res_expr, None));
+        let mut result = Statement::Select(SelectStmt {
+            selects: expr_selects.clone(),
+            froms: vec![],
+            wheres: None,
+            group_by: None,
+            having: None,
+            order: vec![],
+            offset: None,
+            limit: None,
+        });
+        match parser.parse_stmt() {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(e) => {
+                error!("expected: {:?} but get: {:?}", result, e);
+                assert!(false);
+            }
+        }
     }
 }

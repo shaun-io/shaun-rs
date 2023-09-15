@@ -25,6 +25,7 @@ pub enum Operation {
 
     Negate(Box<Expression>),
     BitWiseNot(Box<Expression>),
+    // 取余运算符
     Modulo(Box<Expression>, Box<Expression>),
 }
 

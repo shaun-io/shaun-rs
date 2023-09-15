@@ -1,4 +1,5 @@
 use super::expression::Expression;
+use super::keyword::{self, Keyword};
 use super::operation::Operation;
 use super::token::Token;
 
@@ -8,7 +9,7 @@ pub enum Precedence {
     Equals,      // ==
     LessGreater, // > or < or >= or <=
     Sum,         // +
-    Product,     // * / 
+    Product,     // * /
     Prefix,      // -X or !X
     Call,        // function(x)
 }
@@ -21,6 +22,12 @@ pub fn match_precedence(t: Token) -> Precedence {
         Token::LessThanOrEqual => Precedence::LessGreater,
         Token::GreaterThan => Precedence::LessGreater,
         Token::GreaterThanOrEqual => Precedence::LessGreater,
+        Token::KeyWord(k) => match k {
+            Keyword::And => Precedence::Sum,
+            Keyword::Or => Precedence::Sum,
+            Keyword::Not => Precedence::Sum,
+            _ => Precedence::Lowest,
+        },
         Token::Add => Precedence::Sum,
         Token::Minus => Precedence::Sum,
         Token::Slash => Precedence::Product,
