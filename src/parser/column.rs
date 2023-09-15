@@ -1,7 +1,7 @@
-use super::data_type::DataType;
-use super::expression::Expression;
+use crate::parser::expression::Expression;
+use crate::parser::DataType;
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(PartialEq, Debug)]
 pub struct Column {
     pub name: String,
     pub data_type: DataType,

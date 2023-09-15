@@ -1,6 +1,6 @@
 use std::fmt;
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy, Hash)]
 pub enum Keyword {
     And,
     As,
@@ -76,7 +76,7 @@ impl fmt::Display for Keyword {
             f,
             "keyword: {}",
             match self {
-                Self::And => "AND",
+                Self::And => "And",
                 Self::As => "As",
                 Self::Asc => "Asc",
                 Self::Begin => "Begin",
