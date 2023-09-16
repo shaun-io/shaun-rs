@@ -10,6 +10,7 @@ pub mod token;
 
 use crate::parser::{operation::Operation, operator::match_precedence};
 
+use crate::error::{Error, Result};
 use data_type::DataType;
 use expression::Expression;
 use expression::Literal;
@@ -52,10 +53,10 @@ impl Parser {
         self.peek_token = self.lexer.next_token();
     }
 
-    pub fn parse_stmt(&mut self) -> Result<Statement, String> {
+    pub fn parse_stmt(&mut self) -> Result<Statement> {
         // 直接与 lexer 产生的第一个 Token 作比较
         if self.pre_token == Token::Eof {
-            return Err(format!("empty token {}", self.pre_token));
+            return Err(Error::ParseErr(format!("empty token {}", self.pre_token)));
         }
 
         let result = match &self.pre_token {
@@ -73,13 +74,13 @@ impl Parser {
 
             Token::KeyWord(Keyword::Explain) => self.parse_explain_stmt(),
 
-            t => Err(format!("unexpected token: {}", t)),
+            t => Err(Error::ParseErr(format!("unexpected token: {}", t))),
         };
 
         result
     }
 
-    fn parse_transaction_stmt(&mut self) -> Result<Statement, String> {
+    fn parse_transaction_stmt(&mut self) -> Result<Statement> {
         match &self.pre_token {
             // BEGIN TRANSACTION READ ONLY / WRITE;
             // BEGIN TRANSACTION READ ONLY AS OF SYSTEM TIME TimeStamp(u64);
@@ -94,7 +95,7 @@ impl Parser {
                         Token::KeyWord(Keyword::Only) => is_readonly = true,
                         Token::KeyWord(Keyword::Write) => is_readonly = false,
 
-                        t => return Err(format!("unexpected token: {}", t)),
+                        t => return Err(Error::ParseErr(format!("unexpected token: {}", t))),
                     }
                 }
 
@@ -106,7 +107,10 @@ impl Parser {
                     match self.next_token() {
                         Token::Number(n) => version = n.parse::<u64>().ok(),
                         t => {
-                            return Err(format!("unexpected token: {} expected: Number", t));
+                            return Err(Error::ParseErr(format!(
+                                "unexpected token: {} expected: Number",
+                                t
+                            )));
                         }
                     }
                 }
@@ -125,24 +129,24 @@ impl Parser {
                 Ok(Statement::Rollback)
             }
 
-            t => Err(format!("unexpected token: {}", t)),
+            t => Err(Error::ParseErr(format!("unexpected token: {}", t))),
         }
     }
 
     #[allow(dead_code)]
-    fn parse_ddl_stmt(&mut self) -> Result<Statement, String> {
+    fn parse_ddl_stmt(&mut self) -> Result<Statement> {
         unimplemented!()
     }
 
-    fn parse_delete_stmt(&mut self) -> Result<Statement, String> {
+    fn parse_delete_stmt(&mut self) -> Result<Statement> {
         unimplemented!()
     }
 
-    fn parse_insert_stmt(&mut self) -> Result<Statement, String> {
+    fn parse_insert_stmt(&mut self) -> Result<Statement> {
         unimplemented!()
     }
 
-    fn parse_create_stmt(&mut self) -> Result<Statement, String> {
+    fn parse_create_stmt(&mut self) -> Result<Statement> {
         // CREATE TABLE table_name
         //  (xxx_name xxx_addr xxx_addr xxx_addr,
         //  xxx, xxx);;
@@ -168,10 +172,10 @@ impl Parser {
                 Token::Comma => continue,
                 Token::RightParen => break,
                 _ => {
-                    return Err(format!(
+                    return Err(Error::ParseErr(format!(
                         "unexpected token {:?}, want Comma or RightParen",
                         token
-                    ));
+                    )));
                 }
             }
         }
@@ -184,7 +188,7 @@ impl Parser {
         }))
     }
 
-    fn parse_column(&mut self) -> Result<Column, String> {
+    fn parse_column(&mut self) -> Result<Column> {
         let name = self.next_ident();
         let column_name;
 
@@ -216,7 +220,7 @@ impl Parser {
 
                 t => {
                     debug!("unexpected token: {}", t);
-                    return Err(format!("unexpected token: {}", t));
+                    return Err(Error::ParseErr(format!("unexpected token: {}", t)));
                 }
             },
             primary_key: false,
@@ -229,11 +233,11 @@ impl Parser {
         Ok(_column)
     }
 
-    fn parse_drop_stmt(&mut self) -> Result<Statement, String> {
+    fn parse_drop_stmt(&mut self) -> Result<Statement> {
         unimplemented!()
     }
 
-    fn parse_select_stmt(&mut self) -> Result<Statement, String> {
+    fn parse_select_stmt(&mut self) -> Result<Statement> {
         Ok(Statement::Select(SelectStmt {
             selects: self.parse_clause_select()?,
             froms: self.parse_clause_from()?,
@@ -257,7 +261,7 @@ impl Parser {
         }))
     }
 
-    fn parse_clause_select(&mut self) -> Result<Vec<(Expression, Option<String>)>, String> {
+    fn parse_clause_select(&mut self) -> Result<Vec<(Expression, Option<String>)>> {
         // SELECT   1 + 3       AS   c1;
         //        [expression]     [alias]
         let mut selects = Vec::new();
@@ -298,7 +302,7 @@ impl Parser {
         Ok(selects)
     }
 
-    fn parse_clause_from(&mut self) -> Result<Vec<FromItem>, String> {
+    fn parse_clause_from(&mut self) -> Result<Vec<FromItem>> {
         let mut froms = Vec::new();
 
         if !self.next_if_keyword(Keyword::From) {
@@ -343,7 +347,7 @@ impl Parser {
         Ok(froms)
     }
 
-    fn parse_clause_from_table(&mut self) -> Result<FromItem, String> {
+    fn parse_clause_from_table(&mut self) -> Result<FromItem> {
         let name = self.next_ident()?;
 
         self.next_token();
@@ -362,7 +366,7 @@ impl Parser {
         Ok(FromItem::Table { name, alias })
     }
 
-    fn parse_clause_from_jointype(&mut self) -> Result<Option<JoinType>, String> {
+    fn parse_clause_from_jointype(&mut self) -> Result<Option<JoinType>> {
         if self.next_if_token(Token::KeyWord(Keyword::Outer)) {
             self.next_expected_keyword(Keyword::Join)?;
 
@@ -386,7 +390,7 @@ impl Parser {
         }
     }
 
-    fn parse_clause_group_by(&mut self) -> Result<Vec<Expression>, String> {
+    fn parse_clause_group_by(&mut self) -> Result<Vec<Expression>> {
         let mut exprs = Vec::new();
 
         if self.next_if_keyword(Keyword::Group) {
@@ -406,7 +410,7 @@ impl Parser {
         Ok(exprs)
     }
 
-    fn parse_clause_where(&mut self) -> Result<Option<Expression>, String> {
+    fn parse_clause_where(&mut self) -> Result<Option<Expression>> {
         if !self.next_if_keyword(Keyword::Where) {
             return Ok(None);
         }
@@ -414,7 +418,7 @@ impl Parser {
         return Ok(Some(self.parse_expression(Precedence::Lowest)?.unwrap()));
     }
 
-    fn parse_clause_having(&mut self) -> Result<Option<Expression>, String> {
+    fn parse_clause_having(&mut self) -> Result<Option<Expression>> {
         if self.next_if_keyword(Keyword::Having) {
             Ok(Some(self.parse_expression(Precedence::Lowest)?.unwrap()))
         } else {
@@ -422,7 +426,7 @@ impl Parser {
         }
     }
 
-    fn parse_clause_order(&mut self) -> Result<Vec<(Expression, OrderByType)>, String> {
+    fn parse_clause_order(&mut self) -> Result<Vec<(Expression, OrderByType)>> {
         if !self.next_if_keyword(Keyword::Order) {
             return Ok(Vec::new());
         }
@@ -449,10 +453,10 @@ impl Parser {
         Ok(orders)
     }
 
-    fn parse_update_stmt(&mut self) -> Result<Statement, String> {
+    fn parse_update_stmt(&mut self) -> Result<Statement> {
         unimplemented!()
     }
-    fn parse_explain_stmt(&mut self) -> Result<Statement, String> {
+    fn parse_explain_stmt(&mut self) -> Result<Statement> {
         unimplemented!()
     }
 
@@ -480,35 +484,44 @@ impl Parser {
         *self.next_token() == Token::KeyWord(k)
     }
 
-    fn next_expected_keyword(&mut self, k: Keyword) -> Result<(), String> {
+    fn next_expected_keyword(&mut self, k: Keyword) -> Result<()> {
         let t = self.next_token();
 
         if *t == Token::KeyWord(k) {
             Ok(())
         } else {
-            Err(format!("unexpected keyword: {} want: {}", t, k))
+            Err(Error::ParseErr(format!(
+                "unexpected keyword: {} want: {}",
+                t, k
+            )))
         }
     }
 
-    fn next_expected_token(&mut self, t: Token) -> Result<(), String> {
+    fn next_expected_token(&mut self, t: Token) -> Result<()> {
         let token = self.next_token();
 
         if *token == t {
             Ok(())
         } else {
-            Err(format!("unexpected token: {} want: {}", token, t))
+            Err(Error::ParseErr(format!(
+                "unexpected token: {} want: {}",
+                token, t
+            )))
         }
     }
 
-    fn next_ident(&mut self) -> Result<String, String> {
+    fn next_ident(&mut self) -> Result<String> {
         match self.next_token() {
             Token::Ident(ident) => Ok(ident.clone()),
-            t => Err(format!("expected: Token::Ident but get: {}", t)),
+            t => Err(Error::ParseErr(format!(
+                "expected: Token::Ident but get: {}",
+                t
+            ))),
         }
     }
 
     // (1 + 2)
-    fn parse_expression(&mut self, precedence: Precedence) -> Result<Option<Expression>, String> {
+    fn parse_expression(&mut self, precedence: Precedence) -> Result<Option<Expression>> {
         if !self.is_prefix_oper() {
             dbg!("No prefixOperatorFunc for: {}", &self.pre_token);
             return Ok(None);
@@ -538,7 +551,7 @@ impl Parser {
         Ok(Some(lhs))
     }
 
-    fn parse_prefix_expr(&mut self) -> Result<Option<Expression>, String> {
+    fn parse_prefix_expr(&mut self) -> Result<Option<Expression>> {
         // 1 + 2 + 3
         match self.pre_token.clone() {
             Token::Exclamation => {
@@ -548,7 +561,7 @@ impl Parser {
                     match self.parse_expression(Precedence::Prefix)? {
                         Some(exp) => exp,
                         None => {
-                            return Err(format!("ParseErr Operation::Not exp is None"));
+                            return Err(Error::ParseErr(format!("Operation::Not exp is None")));
                         }
                     },
                 )))))
@@ -557,7 +570,7 @@ impl Parser {
                 match self.parse_expression(Precedence::Prefix)? {
                     Some(exp) => exp,
                     None => {
-                        return Err(format!("ParseErr Operation::Assert exp is None"));
+                        return Err(Error::ParseErr(format!("Operation::Assert exp is None")));
                     }
                 },
             ))))),
@@ -567,7 +580,7 @@ impl Parser {
                     match self.parse_expression(Precedence::Prefix)? {
                         Some(exp) => exp,
                         None => {
-                            return Err(format!("ParseErr Operation::Negate exp is None"));
+                            return Err(Error::ParseErr(format!("Operation::Negate exp is None")));
                         }
                     },
                 )))))
@@ -579,7 +592,7 @@ impl Parser {
                         match n.parse::<f64>() {
                             Ok(n) => n,
                             Err(e) => {
-                                return Err(format!("ParseErr: {}", e));
+                                return Err(Error::ParseErr(format!("{}", e)));
                             }
                         },
                     ))))
@@ -588,7 +601,7 @@ impl Parser {
                         match n.parse::<i64>() {
                             Ok(n) => n,
                             Err(e) => {
-                                return Err(format!("ParseErr: {}", e));
+                                return Err(Error::ParseErr(format!("{}", e)));
                             }
                         },
                     ))))
@@ -604,11 +617,14 @@ impl Parser {
 
                 exp
             }
-            _ => Err(format!("No prefixOperatorFunc for {}", self.pre_token)),
+            _ => Err(Error::ParseErr(format!(
+                "No prefixOperatorFunc for {}",
+                self.pre_token
+            ))),
         }
     }
 
-    fn parse_infix_expr(&mut self, exp: Expression) -> Result<Expression, String> {
+    fn parse_infix_expr(&mut self, exp: Expression) -> Result<Expression> {
         match self.pre_token {
             Token::Add => {
                 let precedence = match_precedence(self.pre_token.clone());
@@ -618,7 +634,7 @@ impl Parser {
                     Box::new(match self.parse_expression(precedence)? {
                         Some(exp) => exp,
                         None => {
-                            return Err(format!("ParseErr Operation::Add exp is None"));
+                            return Err(Error::ParseErr(format!("Operation::Add exp is None")));
                         }
                     }),
                 )))
@@ -632,7 +648,7 @@ impl Parser {
                     Box::new(match self.parse_expression(precedence)? {
                         Some(exp) => exp,
                         None => {
-                            return Err(format!("ParseErr Operation::Equal exp is None"));
+                            return Err(Error::ParseErr(format!("Operation::Equal exp is None")));
                         }
                     }),
                 )))
@@ -646,7 +662,9 @@ impl Parser {
                     Box::new(match self.parse_expression(precedence)? {
                         Some(exp) => exp,
                         None => {
-                            return Err(format!("ParseErr Operation::GreaterThan exp is None"));
+                            return Err(Error::ParseErr(format!(
+                                "Operation::GreaterThan exp is None"
+                            )));
                         }
                     }),
                 )))
@@ -660,9 +678,9 @@ impl Parser {
                     Box::new(match self.parse_expression(precedence)? {
                         Some(exp) => exp,
                         None => {
-                            return Err(format!(
-                                "ParseErr Operation::GreaterThanOrEqual exp is None"
-                            ));
+                            return Err(Error::ParseErr(format!(
+                                "Operation::GreaterThanOrEqual exp is None"
+                            )));
                         }
                     }),
                 )))
@@ -676,7 +694,9 @@ impl Parser {
                     Box::new(match self.parse_expression(precedence)? {
                         Some(exp) => exp,
                         None => {
-                            return Err(format!("ParseErr Operation::LessThan exp is None"));
+                            return Err(Error::ParseErr(format!(
+                                "Operation::LessThan exp is None"
+                            )));
                         }
                     }),
                 )))
@@ -690,7 +710,9 @@ impl Parser {
                     Box::new(match self.parse_expression(precedence)? {
                         Some(exp) => exp,
                         None => {
-                            return Err(format!("ParseErr Operation::LessThanOrEqual exp is None"));
+                            return Err(Error::ParseErr(format!(
+                                "Operation::LessThanOrEqual exp is None"
+                            )));
                         }
                     }),
                 )))
@@ -704,7 +726,7 @@ impl Parser {
                     Box::new(match self.parse_expression(precedence)? {
                         Some(exp) => exp,
                         None => {
-                            return Err(format!("ParseErr Operation::Minus exp is None"));
+                            return Err(Error::ParseErr(format!("Operation::Minus exp is None")));
                         }
                     }),
                 )))
@@ -718,7 +740,9 @@ impl Parser {
                     Box::new(match self.parse_expression(precedence)? {
                         Some(exp) => exp,
                         None => {
-                            return Err(format!("ParseErr Operation::NotEqual exp is None"));
+                            return Err(Error::ParseErr(format!(
+                                "Operation::NotEqual exp is None"
+                            )));
                         }
                     }),
                 )))
@@ -732,7 +756,7 @@ impl Parser {
                     Box::new(match self.parse_expression(precedence)? {
                         Some(exp) => exp,
                         None => {
-                            return Err(format!("ParseErr Operation::And exp is None"));
+                            return Err(Error::ParseErr(format!("Operation::And exp is None")));
                         }
                     }),
                 )))
@@ -746,7 +770,7 @@ impl Parser {
                     Box::new(match self.parse_expression(precedence)? {
                         Some(exp) => exp,
                         None => {
-                            return Err(format!("ParseErr Operation::Or exp is None"));
+                            return Err(Error::ParseErr(format!("Operation::Or exp is None")));
                         }
                     }),
                 )))
@@ -760,7 +784,7 @@ impl Parser {
                     Box::new(match self.parse_expression(precedence)? {
                         Some(exp) => exp,
                         None => {
-                            return Err(format!("ParseErr Operation::Like exp is None"));
+                            return Err(Error::ParseErr(format!("Operation::Like exp is None")));
                         }
                     }),
                 )))
@@ -773,7 +797,7 @@ impl Parser {
                     Box::new(match self.parse_expression(precedence)? {
                         Some(exp) => exp,
                         None => {
-                            return Err(format!("ParseErr Operation::Percent exp is None"));
+                            return Err(Error::ParseErr(format!("Operation::Percent exp is None")));
                         }
                     }),
                 )))
@@ -786,7 +810,9 @@ impl Parser {
                     Box::new(match self.parse_expression(precedence)? {
                         Some(exp) => exp,
                         None => {
-                            return Err(format!("ParseErr Operation::Asterisk exp is None"));
+                            return Err(Error::ParseErr(format!(
+                                "Operation::Asterisk exp is None"
+                            )));
                         }
                     }),
                 )))
@@ -799,12 +825,15 @@ impl Parser {
                     Box::new(match self.parse_expression(precedence)? {
                         Some(exp) => exp,
                         None => {
-                            return Err(format!("ParseErr Operation::Slash exp is None"));
+                            return Err(Error::ParseErr(format!("Operation::Slash exp is None")));
                         }
                     }),
                 )))
             }
-            _ => Err(format!("No infixOperatorFunc for {}", self.pre_token)),
+            _ => Err(Error::ParseErr(format!(
+                "No infixOperatorFunc for {}",
+                self.pre_token
+            ))),
         }
     }
 
