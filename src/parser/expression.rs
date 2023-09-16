@@ -32,13 +32,13 @@ mod test {
 
         // Token::Number("123") Token::Plus Token::Number("456");
         let mut parser = Parser::new_parser("SELECT 123 + 456;".to_owned());
-        let mut result_exp = Expression::Operation(Operation::Add(
+        let result_exp = Expression::Operation(Operation::Add(
             Box::new(Expression::Literal(Literal::Int(123))),
             Box::new(Expression::Literal(Literal::Int(456))),
         ));
         let mut expr_selects = vec![];
         expr_selects.push((result_exp.clone(), None));
-        let mut result = Statement::Select(SelectStmt {
+        let result = Statement::Select(SelectStmt {
             selects: expr_selects,
             froms: vec![],
             wheres: None,
@@ -61,7 +61,7 @@ mod test {
         parser.update("SELECT 123 + 456 AS c1");
         let mut expr_selects = vec![];
         expr_selects.push((result_exp.clone(), Some("c1".to_owned())));
-        let mut result = Statement::Select(SelectStmt {
+        let result = Statement::Select(SelectStmt {
             selects: expr_selects,
             froms: vec![],
             wheres: None,
@@ -144,7 +144,7 @@ mod test {
         ));
         expr_selects.clear();
         expr_selects.push((res_expr, None));
-        let mut result = Statement::Select(SelectStmt {
+        let result = Statement::Select(SelectStmt {
             selects: expr_selects.clone(),
             froms: vec![],
             wheres: None,
@@ -171,7 +171,7 @@ mod test {
         ));
         expr_selects.clear();
         expr_selects.push((res_expr, None));
-        let mut result = Statement::Select(SelectStmt {
+        let result = Statement::Select(SelectStmt {
             selects: expr_selects.clone(),
             froms: vec![],
             wheres: None,
@@ -204,7 +204,7 @@ mod test {
         ));
         expr_selects.clear();
         expr_selects.push((res_expr, None));
-        let mut result = Statement::Select(SelectStmt {
+        let result = Statement::Select(SelectStmt {
             selects: expr_selects.clone(),
             froms: vec![],
             wheres: None,

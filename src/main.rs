@@ -1,3 +1,4 @@
+pub mod error;
 pub mod parser;
 
 use parser::token::print_hello_world;
