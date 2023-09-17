@@ -36,7 +36,7 @@ fn main() {
                 p.update(&input);
                 match p.parse_stmt() {
                     Ok(s) => {
-                        println!("{:?}", s);
+                        dbg!(s);
                     }
                     Err(e) => {
                         println!("ParseErr: {:?}", e);
