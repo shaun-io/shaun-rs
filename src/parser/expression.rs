@@ -1,6 +1,7 @@
 use crate::parser::operation::Operation;
 
 #[derive(PartialEq, Debug, Clone)]
+// 字面量
 pub enum Literal {
     All,
     Null,
