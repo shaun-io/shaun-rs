@@ -50,7 +50,7 @@ impl Parser {
         p
     }
 
-    pub fn update(&mut self, sql_str: &str) -> &mut Parser {
+    pub fn update(&mut self, sql_str: &str) -> &mut Self {
         self.lexer.update(sql_str.to_owned());
         self.peek_token = self.lexer.next_token();
         self.pre_token = self.peek_token.clone();
@@ -207,7 +207,7 @@ impl Parser {
             }
         }
 
-        let _column = column::Column {
+        let mut _column = column::Column {
             name: column_name,
             data_type: match self.next_token() {
                 Token::KeyWord(Keyword::Bool) => DataType::Bool,
@@ -225,8 +225,8 @@ impl Parser {
                 Token::KeyWord(Keyword::String) => DataType::String,
 
                 t => {
-                    debug!("unexpected token: {}", t);
-                    return Err(Error::ParseErr(fmt_err!("unexpected token: {}", t)));
+                    dbg!("unexpected token: {}", t);
+                    return Err(Error::ParseErr(format!("unexpected token: {}", t)));
                 }
             },
             primary_key: false,
@@ -236,6 +236,53 @@ impl Parser {
             index: false,
             references: None,
         };
+
+        while let Token::KeyWord(keyword) = self.peek_token {
+            match keyword {
+                Keyword::Primary => {
+                    self.next_token();
+                    self.next_expected_keyword(Keyword::Key)?;
+                    _column.primary_key = true;
+                }
+                Keyword::Null => {
+                    self.next_token();
+                    if let Some(false) = _column.nullable {
+                        return Err(Error::ParseErr(format!(
+                            "Column {} can't be both not nullable and nullable",
+                            _column.name
+                        )));
+                    }
+                    _column.nullable = Some(true);
+                }
+                Keyword::Not => {
+                    self.next_token();
+                    self.next_expected_keyword(Keyword::Null)?;
+                    _column.nullable = Some(false);
+                }
+                Keyword::Default => {
+                    self.next_token();
+                    self.next_token();
+                    _column.default = self.parse_expression(Precedence::Lowest)?
+                }
+                Keyword::Unique => {
+                    self.next_token();
+                    _column.unique = true
+                }
+                Keyword::Index => {
+                    self.next_token();
+                    _column.index = true
+                }
+                Keyword::References => {
+                    self.next_token();
+                    _column.references = Some(self.next_ident()?)
+                }
+                keyword => {
+                    dbg!("unexpected keyword: {}", keyword);
+                    return Err(Error::ParseErr(format!("unexpected keyword: {}", keyword)));
+                }
+            }
+        }
+
         Ok(_column)
     }
 
@@ -682,6 +729,7 @@ impl Parser {
         &self.pre_token
     }
 
+    #[deprecated(since = "0.0.1", note = "这个函数语义不正确, 弃用")]
     fn next_if_token(&mut self, t: Token) -> bool {
         *self.next_token() == t
     }
@@ -695,6 +743,7 @@ impl Parser {
         false
     }
 
+    #[deprecated(since = "0.0.1", note = "这个函数语义不正确, 弃用")]
     fn next_if_keyword(&mut self, k: Keyword) -> bool {
         *self.next_token() == Token::KeyWord(k)
     }
@@ -739,10 +788,11 @@ impl Parser {
 
     // (1 + 2)
     fn parse_expression(&mut self, precedence: Precedence) -> Result<Option<Expression>> {
-        dbg!(&self.pre_token);
         if !is_prefix_oper(&self.pre_token) {
-            dbg!("No prefixOperatorFunc for:", &self.pre_token);
-            return Ok(None);
+            return Err(Error::ParseErr(fmt_err!(
+                "No prefixOperatorFunc for: {:?}",
+                &self.pre_token
+            )));
         }
 
         let mut lhs = match self.parse_prefix_expr()? {
@@ -754,7 +804,6 @@ impl Parser {
             }
         };
 
-        dbg!(&self.pre_token, &self.peek_token, &lhs);
         while self.pre_token != Token::Semicolon && precedence < self.peek_token_predence() {
             if !is_infix_oper(&self.peek_token) {
                 dbg!(
@@ -1205,52 +1254,83 @@ pub mod test {
         });
     }
 
+    // todo: 里面的部分代码可以用宏简化
     #[test]
     fn parse_create_test() {
-        let sql = "create table shaun (c1 int, c2 string, c3 text);";
+        // 1. 测试最近本的 table 构建, 表中列为最简单列
+        let mut sql = "create table person (id int primary key, name string not null default 'tangruilin', age int unique, class int index references country);";
         let mut parser = Parser::new_parser(sql.to_owned());
-        let result = Statement::CreateTable(stmt::CreateTableStmt {
+        let mut expect = Statement::CreateTable(stmt::CreateTableStmt {
             columns: vec![
                 column::Column {
-                    name: "c1".to_string(),
+                    name: "id".to_string(),
+                    data_type: DataType::Int,
+                    primary_key: true,
+                    nullable: None,
+                    default: None,
+                    unique: false,
+                    index: false,
+                    references: None,
+                },
+                column::Column {
+                    name: "name".to_string(),
+                    data_type: DataType::String,
+                    primary_key: false,
+                    nullable: Some(false),
+                    default: Some(Expression::Literal(Literal::String(
+                        "tangruilin".to_owned(),
+                    ))),
+                    unique: false,
+                    index: false,
+                    references: None,
+                },
+                column::Column {
+                    name: "age".to_string(),
+                    data_type: DataType::Int,
+                    primary_key: false,
+                    nullable: None,
+                    default: None,
+                    unique: true,
+                    index: false,
+                    references: None,
+                },
+                column::Column {
+                    name: "class".to_string(),
                     data_type: DataType::Int,
                     primary_key: false,
                     nullable: None,
                     default: None,
                     unique: false,
-                    index: false,
-                    references: None,
-                },
-                column::Column {
-                    name: "c2".to_string(),
-                    data_type: DataType::String,
-                    primary_key: false,
-                    nullable: None,
-                    default: None,
-                    unique: false,
-                    index: false,
-                    references: None,
-                },
-                column::Column {
-                    name: "c3".to_string(),
-                    data_type: DataType::String,
-                    primary_key: false,
-                    nullable: None,
-                    default: None,
-                    unique: false,
-                    index: false,
-                    references: None,
+                    index: true,
+                    references: Some("country".to_owned()),
                 },
             ],
-            table_name: "shaun".to_string(),
+            table_name: "person".to_string(),
         });
         match parser.parse_stmt() {
-            Ok(s) => {
-                assert_eq!(result, s);
+            Ok(result) => {
+                assert_eq!(expect, result);
             }
             Err(err) => {
-                error!("get error: {}", err);
+                dbg!(err);
                 assert!(false)
+            }
+        }
+        // 2. 测试 parse 的时候, colum 同时出现 not null 和 null, 最终导致解析失败
+        sql = "create table person (id int not null null);";
+
+        match parser.update(sql).parse_stmt() {
+            Ok(result) => {
+                dbg!(fmt_err!("except error, but get {}", result));
+                assert!(false);
+            }
+            Err(err) => {
+                assert_eq!(
+                    err,
+                    Error::ParseErr(
+                        "Column id can't be both not nullable and nullable".to_string()
+                    )
+                );
             }
         }
     }

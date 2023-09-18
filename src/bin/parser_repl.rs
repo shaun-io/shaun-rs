@@ -50,3 +50,15 @@ fn main() {
         }
     }
 }
+
+fn optional(index: u32) -> Option<u32> {
+    if (index == 1) {
+        return Some(index);
+    }
+    None
+}
+
+fn use_optional() -> Option<u32> {
+    let name = optional(1)?;
+    None
+}
