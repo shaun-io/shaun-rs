@@ -50,11 +50,13 @@ impl Parser {
         p
     }
 
-    pub fn update(&mut self, sql_str: &str) {
+    pub fn update(&mut self, sql_str: &str) -> &mut Parser {
         self.lexer.update(sql_str.to_owned());
         self.peek_token = self.lexer.next_token();
         self.pre_token = self.peek_token.clone();
         self.peek_token = self.lexer.next_token();
+
+        self
     }
 
     pub fn parse_stmt(&mut self) -> Result<Statement> {
@@ -242,16 +244,37 @@ impl Parser {
     }
 
     fn parse_select_stmt(&mut self) -> Result<Statement> {
+        // SELECT [selects] [froms] [wheres] [group_by]
+        //        [having] [order] [limit] [offset];
         Ok(Statement::Select(SelectStmt {
             selects: self.parse_clause_select()?,
             froms: self.parse_clause_from()?,
             wheres: self.parse_clause_where()?,
             group_by: match self.parse_clause_group_by() {
-                Ok(group_by_expr) => Some(group_by_expr),
-                Err(_) => None,
+                Ok(group_by_expr) => group_by_expr,
+                Err(e) => {
+                    return Err(e);
+                }
             },
             having: self.parse_clause_having()?,
             order: self.parse_clause_order()?,
+            offset: {
+                dbg!(&self.pre_token);
+                match &self.pre_token {
+                    Token::KeyWord(Keyword::Offset) => {
+                        self.next_token();
+                        Some(match self.parse_expression(Precedence::Lowest)? {
+                            Some(exp) => exp,
+                            None => {
+                                return Err(Error::ParseErr(fmt_err!(
+                                    "OFFSET exp should't be none"
+                                )));
+                            }
+                        })
+                    }
+                    _ => None,
+                }
+            },
             limit: {
                 match &self.peek_token {
                     Token::KeyWord(Keyword::Limit) => {
@@ -262,23 +285,6 @@ impl Parser {
                             None => {
                                 return Err(Error::ParseErr(fmt_err!(
                                     "LIMIT exp should't be none"
-                                )));
-                            }
-                        })
-                    }
-                    _ => None,
-                }
-            },
-            offset: {
-                match &self.peek_token {
-                    Token::KeyWord(Keyword::Offset) => {
-                        self.next_token();
-                        self.next_token();
-                        Some(match self.parse_expression(Precedence::Lowest)? {
-                            Some(exp) => exp,
-                            None => {
-                                return Err(Error::ParseErr(fmt_err!(
-                                    "OFFSET exp should't be none"
                                 )));
                             }
                         })
@@ -301,6 +307,7 @@ impl Parser {
             let expr = self.parse_expression(Precedence::Lowest)?.unwrap();
             // SELECT 1 + 2 AS c1; 1 + 2 是一个表达式, c1 是 alias 的一个名字
             // Keyword::As 是一个可选项
+            dbg!(&self.peek_token);
 
             let alias = match self.peek_token.clone() {
                 Token::KeyWord(Keyword::As) => {
@@ -315,14 +322,19 @@ impl Parser {
                         }
                     }
                 }
-                Token::Ident(ident) => Some(ident),
+                Token::Ident(ident) => {
+                    self.next_token();
+                    Some(ident)
+                }
                 _ => None,
             };
 
             selects.push((expr, alias));
 
-            if !self.next_if_token(Token::Comma) {
-                break;
+            self.next_token();
+            match &self.pre_token {
+                Token::Comma => continue,
+                _ => break,
             }
         }
 
@@ -331,7 +343,7 @@ impl Parser {
 
     fn parse_clause_from(&mut self) -> Result<Vec<FromItem>> {
         let mut froms = Vec::new();
-
+        dbg!(&self.pre_token);
         // select expression_list FROM
         match &self.pre_token {
             Token::KeyWord(Keyword::From) => {}
@@ -343,9 +355,9 @@ impl Parser {
         loop {
             // FROM table_name as alias_table_name
             let mut item = self.parse_clause_from_table()?;
-            self.next_token();
             loop {
-                // SELECT t1.xxx, t2.xxx FROM t1
+                dbg!(&self.pre_token, &self.peek_token, &item);
+                // SELECT t1.xxx, t2.xxx FROM t1 AS t3
                 //   LEFT JOIN t2 ON t1.xxx = t2.xxx;
                 let join_type = self.parse_clause_from_jointype()?;
                 if join_type.is_none() {
@@ -356,27 +368,51 @@ impl Parser {
                 let left_exp = Box::new(item);
                 let right_exp = Box::new(self.parse_clause_from_table()?);
                 // 谓词, On 之后的条件,
+                dbg!(&self.pre_token);
                 let predicate = match join_type {
                     JoinType::Outer => None,
                     _ => {
                         self.next_expected_keyword(Keyword::On)?;
                         self.next_token();
+                        dbg!(&self.pre_token);
 
-                        Some(self.parse_expression(Precedence::Lowest)?.unwrap())
+                        Some(match self.parse_expression(Precedence::Lowest)? {
+                            Some(expr) => expr,
+                            None => {
+                                return Err(Error::ParseErr(fmt_err!(
+                                    "ON Predicate expression is not valid!"
+                                )));
+                            }
+                        })
                     }
                 };
 
                 item = FromItem::Join {
                     left: left_exp,
                     right: right_exp,
-                    join_type: join_type,
+                    join_type,
                     predicate,
                 };
             }
             froms.push(item);
 
-            if !self.next_if_token(Token::Comma) {
-                break;
+            dbg!(&self.peek_token);
+            match &self.pre_token {
+                Token::KeyWord(k) => match k {
+                    Keyword::Where
+                    | Keyword::Group
+                    | Keyword::Having
+                    | Keyword::Order
+                    | Keyword::Limit
+                    | Keyword::Offset => {
+                        break;
+                    }
+                    _ => {}
+                },
+                _ => {
+                    self.next_token();
+                    break;
+                }
             }
         }
 
@@ -384,7 +420,16 @@ impl Parser {
     }
 
     fn parse_clause_from_table(&mut self) -> Result<FromItem> {
-        let name = self.next_ident()?;
+        dbg!(&self.peek_token);
+        let name = match self.peek_token.clone() {
+            Token::Ident(ident) => {
+                self.next_token();
+                ident
+            }
+            _ => {
+                return Err(Error::ParseErr(fmt_err!("FROM table_name is not valid!")));
+            }
+        };
 
         let alias = match self.peek_token.clone() {
             Token::KeyWord(Keyword::As) => {
@@ -399,45 +444,63 @@ impl Parser {
                     }
                 }
             }
-            Token::Ident(ident) => Some(ident),
-            _ => None,
+            Token::Ident(ident) => {
+                self.next_token();
+                Some(ident)
+            }
+            _ => {
+                self.next_token();
+                None
+            }
         };
+
         Ok(FromItem::Table { name, alias })
     }
 
     fn parse_clause_from_jointype(&mut self) -> Result<Option<JoinType>> {
-        match &self.pre_token {
-            Token::KeyWord(Keyword::Outer) => match self.peek_token.clone() {
-                Token::KeyWord(Keyword::Join) => {
-                    self.next_token();
-                    return Ok(Some(JoinType::Outer));
-                }
-                _ => Ok(None),
-            },
-            Token::KeyWord(Keyword::Inner) => match self.peek_token.clone() {
-                Token::KeyWord(Keyword::Join) => {
-                    self.next_token();
-                    return Ok(Some(JoinType::Inner));
-                }
-                _ => Ok(None),
-            },
-            Token::KeyWord(Keyword::Left) => match self.peek_token.clone() {
-                Token::KeyWord(Keyword::Outer) => {
-                    self.next_token();
-                    match self.peek_token.clone() {
-                        Token::KeyWord(Keyword::Join) => {
-                            self.next_token();
-                            return Ok(Some(JoinType::Left));
-                        }
-                        _ => Ok(None),
+        dbg!(&self.pre_token);
+
+        match &self.peek_token {
+            Token::KeyWord(Keyword::Outer) => {
+                self.next_token();
+                match self.peek_token.clone() {
+                    Token::KeyWord(Keyword::Join) => {
+                        self.next_token();
+                        return Ok(Some(JoinType::Outer));
                     }
+                    _ => Ok(None),
                 }
-                Token::KeyWord(Keyword::Join) => {
-                    self.next_token();
-                    Ok(Some(JoinType::Left))
+            }
+            Token::KeyWord(Keyword::Inner) => {
+                self.next_token();
+                match self.peek_token.clone() {
+                    Token::KeyWord(Keyword::Join) => {
+                        self.next_token();
+                        return Ok(Some(JoinType::Inner));
+                    }
+                    _ => Ok(None),
                 }
-                _ => Ok(None),
-            },
+            }
+            Token::KeyWord(Keyword::Left) => {
+                self.next_token();
+                match self.peek_token.clone() {
+                    Token::KeyWord(Keyword::Outer) => {
+                        self.next_token();
+                        match self.peek_token.clone() {
+                            Token::KeyWord(Keyword::Join) => {
+                                self.next_token();
+                                return Ok(Some(JoinType::Left));
+                            }
+                            _ => Ok(None),
+                        }
+                    }
+                    Token::KeyWord(Keyword::Join) => {
+                        self.next_token();
+                        Ok(Some(JoinType::Left))
+                    }
+                    _ => Ok(None),
+                }
+            }
             Token::KeyWord(Keyword::Right) => {
                 self.next_token();
                 match self.peek_token.clone() {
@@ -458,6 +521,11 @@ impl Parser {
                     _ => Ok(None),
                 }
             }
+            // postgresql 和 sqlite 默认join 都是 inner join
+            Token::KeyWord(Keyword::Join) => {
+                self.next_token();
+                Ok(Some(JoinType::Inner))
+            }
             _ => Ok(None),
         }
     }
@@ -465,10 +533,10 @@ impl Parser {
     fn parse_clause_group_by(&mut self) -> Result<Vec<Expression>> {
         let mut exprs = Vec::new();
 
-        match &self.peek_token {
-            Token::KeyWord(Keyword::Group) => {
-                self.next_token();
-            }
+        dbg!(&self.peek_token);
+
+        match &self.pre_token {
+            Token::KeyWord(Keyword::Group) => {}
             _ => {
                 return Ok(exprs);
             }
@@ -485,8 +553,11 @@ impl Parser {
                 }
             });
 
-            if !self.next_if_token(Token::Comma) {
-                break;
+            dbg!(&self.pre_token);
+            self.next_token();
+            match self.peek_token {
+                Token::Comma => continue,
+                _ => break,
             }
         }
 
@@ -494,6 +565,7 @@ impl Parser {
     }
 
     fn parse_clause_where(&mut self) -> Result<Option<Expression>> {
+        dbg!(&self.pre_token);
         match &self.pre_token {
             Token::KeyWord(Keyword::Where) => {}
             _ => {
@@ -501,9 +573,13 @@ impl Parser {
             }
         }
         self.next_token();
+        dbg!(&self.pre_token);
 
         return Ok(Some(match self.parse_expression(Precedence::Lowest)? {
-            Some(exp) => exp,
+            Some(exp) => {
+                self.next_token();
+                exp
+            }
             None => {
                 return Err(Error::ParseErr(fmt_err!("WHERE exp should't be none")));
             }
@@ -515,7 +591,10 @@ impl Parser {
             Token::KeyWord(Keyword::Having) => {
                 self.next_token();
                 Ok(Some(match self.parse_expression(Precedence::Lowest)? {
-                    Some(exp) => exp,
+                    Some(exp) => {
+                        self.next_token();
+                        exp
+                    }
                     None => {
                         return Err(Error::ParseErr("HAVING exp should't be none".to_owned()));
                     }
@@ -526,13 +605,13 @@ impl Parser {
     }
 
     fn parse_clause_order(&mut self) -> Result<Vec<(Expression, OrderByType)>> {
-        match &self.peek_token {
+        dbg!(&self.peek_token);
+        match &self.pre_token {
             Token::KeyWord(Keyword::Order) => {}
             _ => {
                 return Ok(Vec::new());
             }
         }
-        self.next_token();
         self.next_expected_keyword(Keyword::By)?;
         self.next_token();
         let mut orders = Vec::new();
@@ -540,17 +619,25 @@ impl Parser {
         loop {
             orders.push((
                 match self.parse_expression(Precedence::Lowest)? {
-                    Some(exp) => exp,
+                    Some(exp) => {
+                        self.next_token();
+                        exp
+                    }
                     None => {
                         return Err(Error::ParseErr(fmt_err!("ORDER BY exp should't be none")));
                     }
                 },
-                if self.next_if_keyword(Keyword::Asc) {
-                    OrderByType::Asc
-                } else if self.next_if_keyword(Keyword::Desc) {
-                    OrderByType::Desc
-                } else {
-                    OrderByType::Asc
+                // if self.next_if_keyword(Keyword::Asc) {
+                //     OrderByType::Asc
+                // } else if self.next_if_keyword(Keyword::Desc) {
+                //     OrderByType::Desc
+                // } else {
+                //     OrderByType::Asc
+                // },
+                match self.pre_token {
+                    Token::KeyWord(Keyword::Asc) => OrderByType::Asc,
+                    Token::KeyWord(Keyword::Desc) => OrderByType::Desc,
+                    _ => OrderByType::Asc,
                 },
             ));
             if !self.next_if_token(Token::Comma) {
@@ -722,6 +809,7 @@ impl Parser {
                 exp
             }
             Token::Ident(i) => match &self.peek_token {
+                Token::LeftParen => Ok(Some(Expression::Literal(Literal::String(i)))),
                 Token::Period => {
                     self.next_token();
                     Ok(Some(Expression::Field(
@@ -737,7 +825,7 @@ impl Parser {
                         },
                     )))
                 }
-                _ => Ok(Some(Expression::Literal(Literal::String(i)))),
+                _ => Ok(Some(Expression::Field(None, i))),
             },
             Token::String(s) => Ok(Some(Expression::Literal(Literal::String(s)))),
             Token::KeyWord(k) => match k {
@@ -812,7 +900,7 @@ impl Parser {
                         Some(exp) => exp,
                         None => {
                             return Err(Error::ParseErr(fmt_err!(
-                                "Operation::GreaterThanOrEqual exp is None"
+                                "Operation::GreaterThanOrEqual is None"
                             )));
                         }
                     }),
@@ -970,6 +1058,7 @@ impl Parser {
                 match exp {
                     Expression::Literal(Literal::String(s)) => s,
                     _ => {
+                        dbg!(&exp);
                         return Err(Error::ParseErr(fmt_err!(
                             "Operation::LeftParen exp is not Literal::String"
                         )));
@@ -1042,7 +1131,7 @@ pub mod test {
 
     use super::stmt::*;
     use super::*;
-    use log::{debug, error};
+    use log::error;
     use std::io::Write;
 
     #[cfg(test)]
@@ -1234,6 +1323,270 @@ pub mod test {
 
     #[test]
     fn parse_select_test() {
-        let p = Parser::new_parser("SELECT c1 AS c2 FROM table_1".to_owned());
+        init();
+
+        let mut p = Parser::new_parser("SELECT c1 AS c2 FROM table_1;".to_owned());
+        let mut result = Statement::Select(SelectStmt {
+            selects: vec![(
+                Expression::Field(None, "c1".to_owned()),
+                Some("c2".to_owned()),
+            )],
+            froms: vec![FromItem::Table {
+                name: "table_1".to_owned(),
+                alias: None,
+            }],
+            wheres: None,
+            group_by: vec![],
+            having: None,
+            order: vec![],
+            limit: None,
+            offset: None,
+        });
+        dbg!(&result);
+        match p.parse_stmt() {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(e) => {
+                error!("expected: {} but get {}", result, e);
+                assert!(false);
+            }
+        }
+        let mut sql = r#"SELECT 1 + 2 AS c1, user.id FROM table_1 AS table_2
+                                LEFT JOIN table_3 AS table_4
+                                ON table_2.id = table_4.id
+                                ORDER BY table_2.id ASC OFFSET 10;"#;
+        result = Statement::Select(SelectStmt {
+            selects: vec![
+                ((
+                    Expression::Operation(Operation::Add(
+                        Box::new(Expression::Literal(Literal::Int(1))),
+                        Box::new(Expression::Literal(Literal::Int(2))),
+                    )),
+                    Some("c1".to_owned()),
+                )),
+                (
+                    Expression::Field(Some("user".to_owned()), "id".to_owned()),
+                    None,
+                ),
+            ],
+            froms: vec![FromItem::Join {
+                left: Box::new(FromItem::Table {
+                    name: "table_1".to_owned(),
+                    alias: Some("table_2".to_owned()),
+                }),
+                right: Box::new(FromItem::Table {
+                    name: "table_3".to_owned(),
+                    alias: Some("table_4".to_owned()),
+                }),
+                join_type: JoinType::Left,
+                predicate: Some(Expression::Operation(Operation::Equal(
+                    Box::new(Expression::Field(
+                        Some("table_2".to_owned()),
+                        "id".to_owned(),
+                    )),
+                    Box::new(Expression::Field(
+                        Some("table_4".to_owned()),
+                        "id".to_owned(),
+                    )),
+                ))),
+            }],
+            wheres: None,
+            group_by: vec![],
+            having: None,
+            order: vec![(
+                Expression::Field(Some("table_2".to_owned()), "id".to_owned()),
+                OrderByType::Asc,
+            )],
+            offset: Some(Expression::Literal(Literal::Int(10))),
+            limit: None,
+        });
+        match p.update(sql).parse_stmt() {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(e) => {
+                error!("expected: {} but get {}", result, e);
+                assert!(false);
+            }
+        };
+
+        error!("here");
+
+        sql = r#"SELECT c.category_name, COUNT(p.product_id) AS product_count, AVG(p.unit_price) AS avg_price
+                 FROM categories c
+                 LEFT JOIN products p ON c.category_id = p.category_id
+                 RIGHT JOIN orders o ON p.product_id = o.product_id
+                 WHERE o.order_date >= '2023-01-01' AND o.order_date <= '2023-12-31'
+                 GROUP BY c.category_name
+                 HAVING COUNT(p.product_id) >= 5
+                 ORDER BY avg_price DESC OFFSET 4 + 10 * 10.1 LIMIT 3;"#;
+        result = Statement::Select(SelectStmt {
+            selects: vec![
+                (
+                    Expression::Field(Some("c".to_owned()), "category_name".to_owned()),
+                    None,
+                ),
+                (
+                    Expression::Function(
+                        "COUNT".to_owned(),
+                        vec![Expression::Field(
+                            Some("p".to_owned()),
+                            "product_id".to_owned(),
+                        )],
+                    ),
+                    Some("product_count".to_owned()),
+                ),
+                (
+                    Expression::Function(
+                        "AVG".to_owned(),
+                        vec![Expression::Field(
+                            Some("p".to_owned()),
+                            "unit_price".to_owned(),
+                        )],
+                    ),
+                    Some("avg_price".to_owned()),
+                ),
+            ],
+            froms: vec![FromItem::Join {
+                left: Box::new(FromItem::Join {
+                    left: Box::new(FromItem::Table {
+                        name: "categories".to_owned(),
+                        alias: Some("c".to_owned()),
+                    }),
+                    right: Box::new(FromItem::Table {
+                        name: "products".to_owned(),
+                        alias: Some("p".to_owned()),
+                    }),
+                    join_type: JoinType::Left,
+                    predicate: Some(Expression::Operation(Operation::Equal(
+                        Box::new(Expression::Field(
+                            Some("c".to_owned()),
+                            "category_id".to_owned(),
+                        )),
+                        Box::new(Expression::Field(
+                            Some("p".to_owned()),
+                            "category_id".to_owned(),
+                        )),
+                    ))),
+                }),
+                right: Box::new(FromItem::Table {
+                    name: "orders".to_owned(),
+                    alias: Some("o".to_owned()),
+                }),
+                join_type: JoinType::Right,
+                predicate: Some(Expression::Operation(Operation::Equal(
+                    Box::new(Expression::Field(
+                        Some("p".to_owned()),
+                        "product_id".to_owned(),
+                    )),
+                    Box::new(Expression::Field(
+                        Some("o".to_owned()),
+                        "product_id".to_owned(),
+                    )),
+                ))),
+            }],
+            wheres: Some(Expression::Operation(Operation::And(
+                Box::new(Expression::Operation(Operation::GreaterThanOrEqual(
+                    Box::new(Expression::Field(
+                        Some("o".to_owned()),
+                        "order_date".to_owned(),
+                    )),
+                    Box::new(Expression::Literal(Literal::String(
+                        "2023-01-01".to_owned(),
+                    ))),
+                ))),
+                Box::new(Expression::Operation(Operation::LessThanOrEqual(
+                    Box::new(Expression::Field(
+                        Some("o".to_owned()),
+                        "order_date".to_owned(),
+                    )),
+                    Box::new(Expression::Literal(Literal::String(
+                        "2023-12-31".to_owned(),
+                    ))),
+                ))),
+            ))),
+            group_by: vec![Expression::Field(
+                Some("c".to_owned()),
+                "category_name".to_owned(),
+            )],
+            having: Some(Expression::Operation(Operation::GreaterThanOrEqual(
+                Box::new(Expression::Function(
+                    "COUNT".to_owned(),
+                    vec![Expression::Field(
+                        Some("p".to_owned()),
+                        "product_id".to_owned(),
+                    )],
+                )),
+                Box::new(Expression::Literal(Literal::Int(5))),
+            ))),
+            order: vec![(
+                Expression::Field(None, "avg_price".to_owned()),
+                OrderByType::Desc,
+            )],
+            offset: Some(Expression::Operation(Operation::Add(
+                Box::new(Expression::Literal(Literal::Int(4))),
+                Box::new(Expression::Operation(Operation::Multiply(
+                    Box::new(Expression::Literal(Literal::Int(10))),
+                    Box::new(Expression::Literal(Literal::Float(10.1))),
+                ))),
+            ))),
+            limit: Some(Expression::Literal(Literal::Int(3))),
+        });
+
+        match p.update(sql).parse_stmt() {
+            Ok(s) => {
+                dbg!(&result, &s);
+                assert_eq!(result, s);
+            }
+            Err(e) => {
+                error!("expected: {} but get {}", result, e);
+                assert!(false);
+            }
+        };
+
+        sql = r#"SELECT 1 + 2 AS c1, account.id
+                 FROM table_1
+                 OFFSET TRUE AND FALSE
+                 LIMIT 10;
+                "#;
+        result = Statement::Select(SelectStmt {
+            selects: vec![
+                (
+                    Expression::Operation(Operation::Add(
+                        Box::new(Expression::Literal(Literal::Int(1))),
+                        Box::new(Expression::Literal(Literal::Int(2))),
+                    )),
+                    Some("c1".to_owned()),
+                ),
+                (
+                    Expression::Field(Some("account".to_owned()), "id".to_owned()),
+                    None,
+                ),
+            ],
+            froms: vec![FromItem::Table {
+                name: "table_1".to_owned(),
+                alias: None,
+            }],
+            wheres: None,
+            group_by: vec![],
+            having: None,
+            order: vec![],
+            offset: Some(Expression::Operation(Operation::And(
+                Box::new(Expression::Literal(Literal::Bool(true))),
+                Box::new(Expression::Literal(Literal::Bool(false))),
+            ))),
+            limit: Some(Expression::Literal(Literal::Int(10))),
+        });
+        match p.update(sql).parse_stmt() {
+            Ok(s) => {
+                dbg!(&result, &s);
+                assert_eq!(result, s);
+            }
+            Err(e) => {
+                error!("expected: {} but get {}", result, e);
+                assert!(false);
+            }
+        };
     }
 }

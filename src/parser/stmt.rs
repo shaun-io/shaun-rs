@@ -103,7 +103,7 @@ pub struct SelectStmt {
     pub selects: Vec<(Expression, Option<String>)>,
     pub froms: Vec<FromItem>,
     pub wheres: Option<Expression>,
-    pub group_by: Option<Vec<Expression>>,
+    pub group_by: Vec<Expression>,
     pub having: Option<Expression>,
     pub order: Vec<(Expression, OrderByType)>,
     pub offset: Option<Expression>,
