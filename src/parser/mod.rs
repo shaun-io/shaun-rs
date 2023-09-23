@@ -1,4 +1,5 @@
 mod column;
+
 mod data_type;
 mod expression;
 mod keyword;
@@ -415,7 +416,66 @@ impl Parser {
     }
 
     fn parse_insert_stmt(&mut self) -> Result<Statement> {
-        unimplemented!()
+        // INSERT INTO person (name, age, class) VALUES ("tangruilin", 14, "Grade Six"), ("yinyuting", 15, "Grade Five")
+        self.next_expected_keyword(Keyword::Into)?;
+        let table = self.next_ident()?;
+        let columns = if self.peek_token == Token::LeftParen {
+            // todo: 这里应该有一个 next_if_peek 的方法处理这个情况
+            self.next_token();
+            let mut cols = Vec::new();
+            loop {
+                cols.push(self.next_ident()?);
+                match self.next_token() {
+                    Token::Comma => continue,
+                    Token::RightParen => break,
+                    t => {
+                        return Err(Error::ParseErr(fmt_err!(
+                            "excepted Comma or RightParen, get {}",
+                            t
+                        )));
+                    }
+                }
+            }
+            Some(cols)
+        } else {
+            None
+        };
+
+        self.next_expected_keyword(Keyword::Values)?;
+        let mut values = Vec::new();
+
+        loop {
+            if self.peek_token != Token::LeftParen {
+                return Err(Error::ParseErr(fmt_err!(
+                    "except token LeftParen, get {:?}",
+                    self.peek_token
+                )));
+            }
+
+            let mut exprs = Vec::new();
+            self.next_token();
+
+            loop {
+                self.next_token();
+                exprs.push(self.parse_expression(Precedence::Lowest)?);
+                match self.next_token() {
+                    Token::RightParen => break,
+                    Token::Comma => {}
+                    _ => return Err(Error::ParseErr("".to_owned())),
+                }
+            }
+
+            values.push(exprs);
+            if self.peek_token != Token::Comma {
+                break;
+            }
+        }
+
+        Ok(Statement::Insert(stmt::InsertStmt {
+            table,
+            columns,
+            values: values,
+        }))
     }
 
     fn parse_create_index_stmt(&mut self) -> Result<Statement> {
@@ -1624,6 +1684,34 @@ pub mod test {
     }
 
     test_parser! {
+        insert_table_base: "insert into person (id, name, age) values (1, 'tangruilin', 14)" => Ok(Statement::Insert(InsertStmt {
+                table: "person".to_owned(),
+                columns: Some(["id".to_owned(), "name".to_owned(), "age".to_owned()].to_vec()),
+                values: [[
+                    Some(Expression::Literal(Literal::Int(1))),
+                    Some(Expression::Literal(Literal::String(
+                        "tangruilin".to_owned()
+                    ))),
+                    Some(Expression::Literal(Literal::Int(14))),
+                ]
+                .to_vec()]
+                .to_vec(),
+            })),
+
+        insert_without_column_name: "insert into person values (1, 'tangruilin', 14)" => Ok(Statement::Insert(InsertStmt {
+                table: "person".to_owned(),
+                columns: None,
+                values: [[
+                    Some(Expression::Literal(Literal::Int(1))),
+                    Some(Expression::Literal(Literal::String(
+                        "tangruilin".to_owned()
+                    ))),
+                    Some(Expression::Literal(Literal::Int(14))),
+                ]
+                .to_vec()]
+                .to_vec(),
+            })),
+
         create_table_success: "create table person (id int primary key, name string not null default 'tangruilin', age int unique, class int index references country);" => Ok(Statement::CreateTable(stmt::CreateTableStmt {
             columns: vec![
                 column::Column {

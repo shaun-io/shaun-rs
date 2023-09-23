@@ -69,8 +69,12 @@ pub struct CreateTableStmt {
 pub struct DropTableStmt {}
 #[derive(Eq, PartialEq, Debug)]
 pub struct DeleteTableStmt {}
-#[derive(Eq, PartialEq, Debug)]
-pub struct InsertStmt {}
+#[derive(PartialEq, Debug)]
+pub struct InsertStmt {
+    pub table: String,
+    pub columns: Option<Vec<String>>,
+    pub values: Vec<Vec<Option<Expression>>>,
+}
 #[derive(Eq, PartialEq, Debug)]
 pub struct UpdateStmt {}
 
