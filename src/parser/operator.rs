@@ -23,7 +23,8 @@ pub fn is_prefix_oper(t: &token::Token) -> bool {
         | Token::Ident(_)
         | Token::KeyWord(Keyword::True)
         | Token::KeyWord(Keyword::False)
-        | Token::String(_) => true,
+        | Token::String(_)
+        | Token::KeyWord(Keyword::Null) => true,
         _ => false,
     }
 }

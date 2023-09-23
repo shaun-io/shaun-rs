@@ -2,6 +2,7 @@ use crate::parser::operation::Operation;
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum Literal {
+    All,
     Null,
     Bool(bool),
     Int(i64),
@@ -293,6 +294,51 @@ mod test {
         });
         match parser
             .update("SELECT 1 + 2, 10.1 / FALSE, TRUE AND 10.1;")
+            .parse_stmt()
+        {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(e) => {
+                error!("expected: {:?} but get: {:?}", result, e);
+                assert!(false);
+            }
+        }
+
+        let result = Statement::Select(SelectStmt {
+            selects: vec![
+                (
+                    Expression::Operation(Operation::Add(
+                        Box::new(Expression::Literal(Literal::Int(1))),
+                        Box::new(Expression::Literal(Literal::Int(2))),
+                    )),
+                    None,
+                ),
+                (
+                    Expression::Operation(Operation::Divide(
+                        Box::new(Expression::Literal(Literal::Float(10.1))),
+                        Box::new(Expression::Literal(Literal::Bool(false))),
+                    )),
+                    None,
+                ),
+                (
+                    Expression::Operation(Operation::And(
+                        Box::new(Expression::Literal(Literal::Bool(true))),
+                        Box::new(Expression::Literal(Literal::Float(10.1))),
+                    )),
+                    None,
+                ),
+            ],
+            froms: vec![],
+            wheres: None,
+            group_by: vec![],
+            having: None,
+            order: vec![],
+            offset: None,
+            limit: None,
+        });
+        match parser
+            .update("SELECT (1) + (2), ((10.1) / (FALSE)), (TRUE AND 10.1);")
             .parse_stmt()
         {
             Ok(s) => {
