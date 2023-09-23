@@ -248,16 +248,36 @@ impl Parser {
         //        [having] [order] [limit] [offset];
         Ok(Statement::Select(SelectStmt {
             selects: self.parse_clause_select()?,
-            froms: self.parse_clause_from()?,
+            froms: {
+                let froms_exprs = self.parse_clause_from()?;
+                if froms_exprs.is_empty() {
+                    None
+                } else {
+                    Some(froms_exprs)
+                }
+            },
             wheres: self.parse_clause_where()?,
             group_by: match self.parse_clause_group_by() {
-                Ok(group_by_expr) => group_by_expr,
+                Ok(group_by_expr) => {
+                    if group_by_expr.is_empty() {
+                        None
+                    } else {
+                        Some(group_by_expr)
+                    }
+                }
                 Err(e) => {
                     return Err(e);
                 }
             },
             having: self.parse_clause_having()?,
-            order: self.parse_clause_order()?,
+            order: {
+                let order_exprs = self.parse_clause_order()?;
+                if order_exprs.is_empty() {
+                    None
+                } else {
+                    Some(order_exprs)
+                }
+            },
             offset: {
                 dbg!(&self.pre_token);
                 match &self.pre_token {
@@ -1359,14 +1379,14 @@ pub mod test {
                 Expression::Field(None, "c1".to_owned()),
                 Some("c2".to_owned()),
             )],
-            froms: vec![FromItem::Table {
+            froms: Some(vec![FromItem::Table {
                 name: "table_1".to_owned(),
                 alias: None,
-            }],
+            }]),
             wheres: None,
-            group_by: vec![],
+            group_by: None,
             having: None,
-            order: vec![],
+            order: None,
             limit: None,
             offset: None,
         });
@@ -1398,7 +1418,7 @@ pub mod test {
                     None,
                 ),
             ],
-            froms: vec![FromItem::Join {
+            froms: Some(vec![FromItem::Join {
                 left: Box::new(FromItem::Table {
                     name: "table_1".to_owned(),
                     alias: Some("table_2".to_owned()),
@@ -1418,14 +1438,14 @@ pub mod test {
                         "id".to_owned(),
                     )),
                 ))),
-            }],
+            }]),
             wheres: None,
-            group_by: vec![],
+            group_by: None,
             having: None,
-            order: vec![(
+            order: Some(vec![(
                 Expression::Field(Some("table_2".to_owned()), "id".to_owned()),
                 OrderByType::Asc,
-            )],
+            )]),
             offset: Some(Expression::Literal(Literal::Int(10))),
             limit: None,
         });
@@ -1476,7 +1496,7 @@ pub mod test {
                     Some("avg_price".to_owned()),
                 ),
             ],
-            froms: vec![FromItem::Join {
+            froms: Some(vec![FromItem::Join {
                 left: Box::new(FromItem::Join {
                     left: Box::new(FromItem::Table {
                         name: "categories".to_owned(),
@@ -1513,7 +1533,7 @@ pub mod test {
                         "product_id".to_owned(),
                     )),
                 ))),
-            }],
+            }]),
             wheres: Some(Expression::Operation(Operation::And(
                 Box::new(Expression::Operation(Operation::GreaterThanOrEqual(
                     Box::new(Expression::Field(
@@ -1534,10 +1554,10 @@ pub mod test {
                     ))),
                 ))),
             ))),
-            group_by: vec![Expression::Field(
+            group_by: Some(vec![Expression::Field(
                 Some("c".to_owned()),
                 "category_name".to_owned(),
-            )],
+            )]),
             having: Some(Expression::Operation(Operation::GreaterThanOrEqual(
                 Box::new(Expression::Function(
                     "COUNT".to_owned(),
@@ -1548,10 +1568,10 @@ pub mod test {
                 )),
                 Box::new(Expression::Literal(Literal::Int(5))),
             ))),
-            order: vec![(
+            order: Some(vec![(
                 Expression::Field(None, "avg_price".to_owned()),
                 OrderByType::Desc,
-            )],
+            )]),
             offset: Some(Expression::Operation(Operation::Add(
                 Box::new(Expression::Literal(Literal::Int(4))),
                 Box::new(Expression::Operation(Operation::Multiply(
@@ -1592,14 +1612,14 @@ pub mod test {
                     None,
                 ),
             ],
-            froms: vec![FromItem::Table {
+            froms: Some(vec![FromItem::Table {
                 name: "table_1".to_owned(),
                 alias: None,
-            }],
+            }]),
             wheres: None,
-            group_by: vec![],
+            group_by: None,
             having: None,
-            order: vec![],
+            order: None,
             offset: Some(Expression::Operation(Operation::And(
                 Box::new(Expression::Literal(Literal::Bool(true))),
                 Box::new(Expression::Literal(Literal::Bool(false))),
@@ -1623,17 +1643,17 @@ pub mod test {
                 Expression::Field(Some("c1".to_owned()), "id".to_owned()),
                 None,
             )],
-            froms: vec![FromItem::Table {
+            froms: Some(vec![FromItem::Table {
                 name: "b2".to_owned(),
                 alias: Some("c1".to_owned()),
-            }],
+            }]),
             wheres: None,
-            group_by: vec![],
+            group_by: None,
             having: None,
-            order: vec![(
+            order: Some(vec![(
                 Expression::Field(Some("c1".to_owned()), "id".to_owned()),
                 OrderByType::Asc,
-            )],
+            )]),
             offset: None,
             limit: None,
         });
@@ -1654,17 +1674,17 @@ pub mod test {
                 Expression::Function("COUNT".to_owned(), vec![Expression::Literal(Literal::All)]),
                 None,
             )],
-            froms: vec![FromItem::Table {
+            froms: Some(vec![FromItem::Table {
                 name: "user".to_owned(),
                 alias: None,
-            }],
+            }]),
             wheres: Some(Expression::Operation(Operation::NotEqual(
                 Box::new(Expression::Field(Some("user".to_owned()), "id".to_owned())),
                 Box::new(Expression::Literal(Literal::Null)),
             ))),
-            group_by: vec![],
+            group_by: None,
             having: None,
-            order: vec![],
+            order: None,
             offset: None,
             limit: None,
         });
@@ -1694,7 +1714,7 @@ pub mod test {
                     None,
                 ),
             ],
-            froms: vec![FromItem::Join {
+            froms: Some(vec![FromItem::Join {
                 left: Box::new(FromItem::Table {
                     name: "c5".to_owned(),
                     alias: None,
@@ -1708,11 +1728,11 @@ pub mod test {
                     Box::new(Expression::Field(Some("c5".to_owned()), "id".to_owned())),
                     Box::new(Expression::Field(Some("c6".to_owned()), "id".to_owned())),
                 ))),
-            }],
+            }]),
             wheres: None,
-            group_by: vec![],
+            group_by: None,
             having: None,
-            order: vec![],
+            order: None,
             offset: None,
             limit: None,
         });
@@ -1759,17 +1779,17 @@ pub mod test {
                     Some("c3".to_owned()),
                 ),
             ],
-            froms: vec![FromItem::Table {
+            froms: Some(vec![FromItem::Table {
                 name: "test_1".to_owned(),
                 alias: None,
-            }],
+            }]),
             wheres: Some(Expression::Operation(Operation::Equal(
                 Box::new(Expression::Field(Some("c1".to_owned()), "id".to_owned())),
                 Box::new(Expression::Literal(Literal::Int(-10))),
             ))),
-            group_by: vec![],
+            group_by: None,
             having: None,
-            order: vec![],
+            order: None,
             offset: None,
             limit: None,
         });

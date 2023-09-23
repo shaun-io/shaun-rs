@@ -41,11 +41,11 @@ mod test {
         expr_selects.push((result_exp.clone(), None));
         let result = Statement::Select(SelectStmt {
             selects: expr_selects,
-            froms: vec![],
+            froms: None,
             wheres: None,
-            group_by: vec![],
+            group_by: None,
             having: None,
-            order: vec![],
+            order: None,
             offset: None,
             limit: None,
         });
@@ -64,11 +64,11 @@ mod test {
         expr_selects.push((result_exp.clone(), Some("c1".to_owned())));
         let result = Statement::Select(SelectStmt {
             selects: expr_selects,
-            froms: vec![],
+            froms: None,
             wheres: None,
-            group_by: vec![],
+            group_by: None,
             having: None,
-            order: vec![],
+            order: None,
             offset: None,
             limit: None,
         });
@@ -119,11 +119,11 @@ mod test {
         expr_selects.push((res_expr.clone(), Some("c1".to_owned())));
         let result = Statement::Select(SelectStmt {
             selects: expr_selects.clone(),
-            froms: vec![],
+            froms: None,
             wheres: None,
-            group_by: vec![],
+            group_by: None,
             having: None,
-            order: vec![],
+            order: None,
             offset: None,
             limit: None,
         });
@@ -147,11 +147,11 @@ mod test {
         expr_selects.push((res_expr, None));
         let result = Statement::Select(SelectStmt {
             selects: expr_selects.clone(),
-            froms: vec![],
+            froms: None,
             wheres: None,
-            group_by: vec![],
+            group_by: None,
             having: None,
-            order: vec![],
+            order: None,
             offset: None,
             limit: None,
         });
@@ -174,11 +174,11 @@ mod test {
         expr_selects.push((res_expr, None));
         let result = Statement::Select(SelectStmt {
             selects: expr_selects.clone(),
-            froms: vec![],
+            froms: None,
             wheres: None,
-            group_by: vec![],
+            group_by: None,
             having: None,
-            order: vec![],
+            order: None,
             offset: None,
             limit: None,
         });
@@ -207,11 +207,11 @@ mod test {
         expr_selects.push((res_expr, None));
         let result = Statement::Select(SelectStmt {
             selects: expr_selects.clone(),
-            froms: vec![],
+            froms: None,
             wheres: None,
-            group_by: vec![],
+            group_by: None,
             having: None,
-            order: vec![],
+            order: None,
             offset: None,
             limit: None,
         });
@@ -243,11 +243,11 @@ mod test {
                     None,
                 ),
             ],
-            froms: vec![],
+            froms: None,
             wheres: None,
-            group_by: vec![],
+            group_by: None,
             having: None,
-            order: vec![],
+            order: None,
             offset: None,
             limit: None,
         });
@@ -284,11 +284,11 @@ mod test {
                     None,
                 ),
             ],
-            froms: vec![],
+            froms: None,
             wheres: None,
-            group_by: vec![],
+            group_by: None,
             having: None,
-            order: vec![],
+            order: None,
             offset: None,
             limit: None,
         });
@@ -329,11 +329,11 @@ mod test {
                     None,
                 ),
             ],
-            froms: vec![],
+            froms: None,
             wheres: None,
-            group_by: vec![],
+            group_by: None,
             having: None,
-            order: vec![],
+            order: None,
             offset: None,
             limit: None,
         });
