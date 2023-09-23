@@ -728,7 +728,9 @@ impl Parser {
         let mut lhs = match self.parse_prefix_expr()? {
             Some(exp) => exp,
             None => {
-                return Err(Error::ParseErr(fmt_err!("ParsePrefixExpression exp is None")));
+                return Err(Error::ParseErr(fmt_err!(
+                    "ParsePrefixExpression exp is None"
+                )));
             }
         };
 
@@ -1074,7 +1076,7 @@ impl Parser {
                     }
                 },
                 match self.peek_token {
-                    // SELECT FUNCTION_NAME(*) 
+                    // SELECT FUNCTION_NAME(*)
                     Token::Asterisk => {
                         self.next_token();
                         match self.peek_token {
