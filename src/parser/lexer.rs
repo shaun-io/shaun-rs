@@ -55,13 +55,7 @@ impl Lexer {
                 _ => Token::LessThan,
             },
             '+' => Token::Add,
-            '-' => match self.peek_char() {
-                '0'..='9' => {
-                    self.read_char();
-                    return Token::Number(format!("-{}", self.read_number()));
-                }
-                _ => Token::Minus,
-            },
+            '-' => Token::Minus,
             '*' => Token::Asterisk,
             '/' => Token::Slash,
             '^' => Token::Caret,

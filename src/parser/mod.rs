@@ -1773,7 +1773,9 @@ pub mod test {
                         Box::new(Expression::Literal(Literal::Int(1))),
                         Box::new(Expression::Operation(Operation::Multiply(
                             Box::new(Expression::Literal(Literal::Int(2))),
-                            Box::new(Expression::Literal(Literal::Int(-10))),
+                            Box::new(Expression::Operation(Operation::Negate(Box::new(
+                                Expression::Literal(Literal::Int(10)),
+                            )))),
                         ))),
                     )),
                     Some("c3".to_owned()),
@@ -1785,7 +1787,9 @@ pub mod test {
             }]),
             wheres: Some(Expression::Operation(Operation::Equal(
                 Box::new(Expression::Field(Some("c1".to_owned()), "id".to_owned())),
-                Box::new(Expression::Literal(Literal::Int(-10))),
+                Box::new(Expression::Operation(Operation::Negate(Box::new(
+                    Expression::Literal(Literal::Int(10)),
+                )))),
             ))),
             group_by: None,
             having: None,
