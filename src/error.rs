@@ -24,3 +24,10 @@ impl Display for Error {
         }
     }
 }
+
+#[macro_export]
+macro_rules! fmt_err {
+    ($($arg:tt)*) => {
+        format!("{}:{} {}", file!(), line!(), format!($($arg)*))
+    };
+}

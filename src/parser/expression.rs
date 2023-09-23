@@ -2,6 +2,7 @@ use crate::parser::operation::Operation;
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum Literal {
+    All,
     Null,
     Bool(bool),
     Int(i64),
@@ -40,11 +41,11 @@ mod test {
         expr_selects.push((result_exp.clone(), None));
         let result = Statement::Select(SelectStmt {
             selects: expr_selects,
-            froms: vec![],
+            froms: None,
             wheres: None,
             group_by: None,
             having: None,
-            order: vec![],
+            order: None,
             offset: None,
             limit: None,
         });
@@ -63,11 +64,11 @@ mod test {
         expr_selects.push((result_exp.clone(), Some("c1".to_owned())));
         let result = Statement::Select(SelectStmt {
             selects: expr_selects,
-            froms: vec![],
+            froms: None,
             wheres: None,
             group_by: None,
             having: None,
-            order: vec![],
+            order: None,
             offset: None,
             limit: None,
         });
@@ -116,13 +117,13 @@ mod test {
         ));
         let mut expr_selects = vec![];
         expr_selects.push((res_expr.clone(), Some("c1".to_owned())));
-        let mut result = Statement::Select(SelectStmt {
+        let result = Statement::Select(SelectStmt {
             selects: expr_selects.clone(),
-            froms: vec![],
+            froms: None,
             wheres: None,
             group_by: None,
             having: None,
-            order: vec![],
+            order: None,
             offset: None,
             limit: None,
         });
@@ -146,11 +147,11 @@ mod test {
         expr_selects.push((res_expr, None));
         let result = Statement::Select(SelectStmt {
             selects: expr_selects.clone(),
-            froms: vec![],
+            froms: None,
             wheres: None,
             group_by: None,
             having: None,
-            order: vec![],
+            order: None,
             offset: None,
             limit: None,
         });
@@ -173,11 +174,11 @@ mod test {
         expr_selects.push((res_expr, None));
         let result = Statement::Select(SelectStmt {
             selects: expr_selects.clone(),
-            froms: vec![],
+            froms: None,
             wheres: None,
             group_by: None,
             having: None,
-            order: vec![],
+            order: None,
             offset: None,
             limit: None,
         });
@@ -206,15 +207,140 @@ mod test {
         expr_selects.push((res_expr, None));
         let result = Statement::Select(SelectStmt {
             selects: expr_selects.clone(),
-            froms: vec![],
+            froms: None,
             wheres: None,
             group_by: None,
             having: None,
-            order: vec![],
+            order: None,
             offset: None,
             limit: None,
         });
         match parser.parse_stmt() {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(e) => {
+                error!("expected: {:?} but get: {:?}", result, e);
+                assert!(false);
+            }
+        }
+
+        // 测试 selects Comma是否正确
+        let result = Statement::Select(SelectStmt {
+            selects: vec![
+                (
+                    Expression::Operation(Operation::Add(
+                        Box::new(Expression::Literal(Literal::Int(1))),
+                        Box::new(Expression::Literal(Literal::Int(2))),
+                    )),
+                    None,
+                ),
+                (
+                    Expression::Operation(Operation::Divide(
+                        Box::new(Expression::Literal(Literal::Float(10.1))),
+                        Box::new(Expression::Literal(Literal::Bool(false))),
+                    )),
+                    None,
+                ),
+            ],
+            froms: None,
+            wheres: None,
+            group_by: None,
+            having: None,
+            order: None,
+            offset: None,
+            limit: None,
+        });
+        match parser.update("SELECT 1 + 2, 10.1 / FALSE;").parse_stmt() {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(e) => {
+                error!("expected: {:?} but get: {:?}", result, e);
+                assert!(false);
+            }
+        }
+        let result = Statement::Select(SelectStmt {
+            selects: vec![
+                (
+                    Expression::Operation(Operation::Add(
+                        Box::new(Expression::Literal(Literal::Int(1))),
+                        Box::new(Expression::Literal(Literal::Int(2))),
+                    )),
+                    None,
+                ),
+                (
+                    Expression::Operation(Operation::Divide(
+                        Box::new(Expression::Literal(Literal::Float(10.1))),
+                        Box::new(Expression::Literal(Literal::Bool(false))),
+                    )),
+                    None,
+                ),
+                (
+                    Expression::Operation(Operation::And(
+                        Box::new(Expression::Literal(Literal::Bool(true))),
+                        Box::new(Expression::Literal(Literal::Float(10.1))),
+                    )),
+                    None,
+                ),
+            ],
+            froms: None,
+            wheres: None,
+            group_by: None,
+            having: None,
+            order: None,
+            offset: None,
+            limit: None,
+        });
+        match parser
+            .update("SELECT 1 + 2, 10.1 / FALSE, TRUE AND 10.1;")
+            .parse_stmt()
+        {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(e) => {
+                error!("expected: {:?} but get: {:?}", result, e);
+                assert!(false);
+            }
+        }
+
+        let result = Statement::Select(SelectStmt {
+            selects: vec![
+                (
+                    Expression::Operation(Operation::Add(
+                        Box::new(Expression::Literal(Literal::Int(1))),
+                        Box::new(Expression::Literal(Literal::Int(2))),
+                    )),
+                    None,
+                ),
+                (
+                    Expression::Operation(Operation::Divide(
+                        Box::new(Expression::Literal(Literal::Float(10.1))),
+                        Box::new(Expression::Literal(Literal::Bool(false))),
+                    )),
+                    None,
+                ),
+                (
+                    Expression::Operation(Operation::And(
+                        Box::new(Expression::Literal(Literal::Bool(true))),
+                        Box::new(Expression::Literal(Literal::Float(10.1))),
+                    )),
+                    None,
+                ),
+            ],
+            froms: None,
+            wheres: None,
+            group_by: None,
+            having: None,
+            order: None,
+            offset: None,
+            limit: None,
+        });
+        match parser
+            .update("SELECT (1) + (2), ((10.1) / (FALSE)), (TRUE AND 10.1);")
+            .parse_stmt()
+        {
             Ok(s) => {
                 assert_eq!(result, s);
             }

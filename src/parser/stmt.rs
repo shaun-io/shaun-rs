@@ -101,11 +101,11 @@ pub enum OrderByType {
 #[derive(Debug, PartialEq, Clone)]
 pub struct SelectStmt {
     pub selects: Vec<(Expression, Option<String>)>,
-    pub froms: Vec<FromItem>,
+    pub froms: Option<Vec<FromItem>>,
     pub wheres: Option<Expression>,
     pub group_by: Option<Vec<Expression>>,
     pub having: Option<Expression>,
-    pub order: Vec<(Expression, OrderByType)>,
+    pub order: Option<Vec<(Expression, OrderByType)>>,
     pub offset: Option<Expression>,
     pub limit: Option<Expression>,
 }
