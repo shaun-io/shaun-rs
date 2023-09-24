@@ -3,7 +3,7 @@ use crate::parser::Parser;
 use crate::parser::expression::Expression;
 use crate::parser::DataType;
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct Column {
     pub name: String,
     pub data_type: DataType,
