@@ -15,6 +15,7 @@ pub enum Statement {
     Update(UpdateStmt),
     Select(SelectStmt),
     Alter(AlterStmt),
+    CreateIndex(CreateIndexStmt),
     ShowDatabase,
     ShowTables,
     Set(SetStmt),
@@ -155,6 +156,13 @@ pub struct SetValue {
 #[derive(Debug, PartialEq, Clone)]
 pub struct SetStmt {
     pub set_value: SetVariableType,
-    pub is_global: bool,
     pub is_session: bool,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct CreateIndexStmt {
+    pub index_name: Option<String>,
+    pub is_unqiue: bool, // 是否是唯一索引
+    pub table_name: String,
+    pub columns: Vec<String>,
 }

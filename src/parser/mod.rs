@@ -101,18 +101,16 @@ impl Parser {
 
     fn parse_set_stmt(&mut self) -> Result<Statement> {
         let mut is_session = true;
-        let mut is_global = false;
         match &self.peek_token {
             Token::KeyWord(Keyword::Session) => {
-                is_session = true;
-                if is_global {
+                if !is_session {
                     return Err(Error::ParseErr(fmt_err!("SET SESSION GLOBAL is not valid")));
                 }
                 self.next_token();
                 match self.peek_token.clone() {
                     Token::KeyWord(Keyword::Transaction) => Ok(Statement::Set(SetStmt {
                         set_value: self.parse_set_transaction()?,
-                        is_global,
+
                         is_session,
                     })),
                     t => {
@@ -121,19 +119,24 @@ impl Parser {
                 }
             }
             Token::KeyWord(Keyword::Global) => {
-                is_global = true;
+                is_session = false;
 
                 self.next_token();
                 match self.peek_token.clone() {
                     Token::KeyWord(Keyword::Transaction) => Ok(Statement::Set(SetStmt {
                         set_value: self.parse_set_transaction()?,
-                        is_global,
                         is_session,
                     })),
                     t => {
                         return Err(Error::ParseErr(fmt_err!("unexpected token: {}", t)));
                     }
                 }
+            }
+            Token::KeyWord(Keyword::Transaction) => {
+                Ok(Statement::Set(SetStmt {
+                    set_value: self.parse_set_transaction()?,
+                    is_session,
+                }))
             }
             t => {
                 // TODO: 需要支持 SET @var_name = expression;
@@ -622,6 +625,7 @@ impl Parser {
         let mut selects = Vec::new();
         loop {
             if self.next_if_token(Token::Asterisk) && selects.is_empty() {
+                self.next_token();
                 break;
             }
 
@@ -1082,14 +1086,17 @@ impl Parser {
                     },
                 )))))
             }
-            Token::Add => Ok(Some(Expression::Operation(Operation::Assert(Box::new(
-                match self.parse_expression(Precedence::Prefix)? {
-                    Some(exp) => exp,
-                    None => {
-                        return Err(Error::ParseErr(fmt_err!("Operation::Assert exp is None")));
-                    }
-                },
-            ))))),
+            Token::Add => {
+                self.next_token();
+                Ok(Some(Expression::Operation(Operation::Assert(Box::new(
+                    match self.parse_expression(Precedence::Prefix)? {
+                        Some(exp) => exp,
+                        None => {
+                            return Err(Error::ParseErr(fmt_err!("Operation::Assert exp is None")));
+                        }
+                    },
+                )))))
+            }
             Token::Minus => {
                 self.next_token();
                 Ok(Some(Expression::Operation(Operation::Negate(Box::new(
@@ -1924,5 +1931,255 @@ pub mod test {
             offset: None,
             limit: None,
         })),
+    }
+
+    #[test]
+    fn parse_alter_table_test() {
+        init();
+
+        let mut p = Parser::new_parser(
+            "ALTER TABLE user ADD COLUMN password string DEFAULT 3 + 5;".to_owned(),
+        );
+        let mut result = Statement::Alter(AlterStmt {
+            alter_type: AlterType::AddColumn(Column {
+                name: "password".to_owned(),
+                data_type: DataType::String,
+                primary_key: false,
+                nullable: None,
+                default: Some(Expression::Operation(Operation::Add(
+                    Box::new(Expression::Literal(Literal::Int(3))),
+                    Box::new(Expression::Literal(Literal::Int(5))),
+                ))),
+                unique: false,
+                index: false,
+                references: None,
+            }),
+            table_name: "user".to_owned(),
+        });
+        match p.parse_stmt() {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(err) => {
+                error!("get error: {}", err);
+                assert!(false)
+            }
+        }
+
+        result = Statement::Alter(AlterStmt {
+            alter_type: AlterType::AddIndex(
+                Some("user_id_index".to_owned()),
+                vec!["account".to_owned(), "id".to_owned()],
+            ),
+            table_name: "user".to_owned(),
+        });
+        match p
+            .update("ALTER TABLE user ADD INDEX user_id_index (account, id);")
+            .parse_stmt()
+        {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(err) => {
+                error!("get error: {}", err);
+                assert!(false)
+            }
+        }
+
+        result = Statement::Alter(AlterStmt {
+            alter_type: AlterType::DropColumn("password".to_owned()),
+            table_name: "user".to_owned(),
+        });
+        match p
+            .update("ALTER TABLE user DROP COLUMN password;")
+            .parse_stmt()
+        {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(err) => {
+                error!("get error: {}", err);
+                assert!(false)
+            }
+        }
+
+        result = Statement::Alter(AlterStmt {
+            alter_type: AlterType::RemoveIndex("user_id_index".to_owned()),
+            table_name: "user".to_owned(),
+        });
+        match p
+            .update("ALTER TABLE user DROP INDEX user_id_index;")
+            .parse_stmt()
+        {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(err) => {
+                error!("get error: {}", err);
+                assert!(false)
+            }
+        };
+
+        result = Statement::Alter(AlterStmt {
+            alter_type: AlterType::ModifyColumn(Column {
+                name: "new_column_name".to_owned(),
+                data_type: DataType::Int,
+                primary_key: true,
+                nullable: None,
+                default: None,
+                unique: false,
+                index: false,
+                references: None,
+            }),
+            table_name: "user".to_owned(),
+        });
+        match p
+            .update("ALTER TABLE user MODIFY COLUMN new_column_name int PRIMARY KEY;")
+            .parse_stmt()
+        {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(err) => {
+                error!("get error: {}", err);
+                assert!(false)
+            }
+        };
+
+        result = Statement::Alter(AlterStmt {
+            alter_type: AlterType::RenameColumn(
+                "old_column_name".to_owned(),
+                "new_column_name".to_owned(),
+            ),
+            table_name: "user".to_owned(),
+        });
+        match p
+            .update("ALTER TABLE user MODIFY COLUMN old_column_name RENAME TO new_column_name;")
+            .parse_stmt()
+        {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(err) => {
+                error!("get error: {}", err);
+                assert!(false)
+            }
+        };
+
+        result = Statement::Alter(AlterStmt {
+            alter_type: AlterType::RenameTable("new_table_name".to_owned()),
+            table_name: "user".to_owned(),
+        });
+        match p
+            .update("ALTER TABLE user RENAME TO new_table_name;")
+            .parse_stmt()
+        {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(err) => {
+                error!("get error: {}", err);
+                assert!(false)
+            }
+        };
+    }
+
+    #[test]
+    fn parse_set_transaction_test() {
+        init();
+        let mut p = Parser::new_parser(
+            "SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;".to_owned(),
+        );
+        let mut result = Statement::Set(SetStmt {
+            set_value: SetVariableType::Transaction(TransactionIsolationLevel::ReadUncommitted),
+            is_session: true,
+        });
+        match p.parse_stmt() {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(err) => {
+                error!("get error: {}", err);
+                assert!(false)
+            }
+        }
+
+        result = Statement::Set(SetStmt {
+            set_value: SetVariableType::Transaction(TransactionIsolationLevel::ReadCommitted),
+            is_session: false,
+        });
+        match p
+            .update("SET GLOBAL TRANSACTION ISOLATION LEVEL READ COMMITTED;")
+            .parse_stmt()
+        {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(err) => {
+                error!("get error: {}", err);
+                assert!(false)
+            }
+        }
+
+        result = Statement::Set(SetStmt {
+            set_value: SetVariableType::Transaction(TransactionIsolationLevel::RepeatableRead),
+            is_session: false,
+        });
+        match p
+            .update("SET GLOBAL TRANSACTION ISOLATION LEVEL REPEATABLE READ;")
+            .parse_stmt()
+        {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(err) => {
+                error!("get error: {}", err);
+                assert!(false)
+            }
+        }
+
+        result = Statement::Set(SetStmt {
+            set_value: SetVariableType::Transaction(TransactionIsolationLevel::Serializable),
+            is_session: true,
+        });
+        match p
+            .update("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;")
+            .parse_stmt()
+        {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(err) => {
+                error!("get error: {}", err);
+                assert!(false);
+            }
+        }
+    }
+
+    #[test]
+    fn parse_show_test() {
+        init();
+        let mut p = Parser::new_parser("SHOW DATABASES;".to_owned());
+        let mut result = Statement::ShowDatabase;
+        match p.parse_stmt() {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(err) => {
+                error!("get error: {}", err);
+                assert!(false);
+            }
+        }
+
+        result = Statement::ShowTables;
+        match p.update("SHOW TABLES").parse_stmt() {
+            Ok(s) => {
+                assert_eq!(result, s);
+            }
+            Err(err) => {
+                error!("get error: {}", err);
+                assert!(false);
+            }
+        }
     }
 }
