@@ -3,6 +3,8 @@ use std::io::Write;
 
 use shaun::parser::Parser;
 
+const PARSER_HISTORY_NAME: &str = ".shaun_parser_history";
+
 fn main() {
     env_logger::Builder::new()
         .format(|buf, record| {
@@ -16,30 +18,31 @@ fn main() {
                 record.args()
             )
         })
-        .filter(None, log::LevelFilter::Debug)
+        .filter(None, log::LevelFilter::Info)
         .init();
 
     let green = "\x1b[32m";
     let default = "\x1b[0m";
     let mut p = Parser::new_parser("".to_owned());
-    let mut input = String::new();
-    loop {
-        input.clear();
-        std::print!("{green}parser> {default}");
-        std::io::stdout().flush().unwrap();
+    let mut reader = rustyline::DefaultEditor::new().unwrap();
+    if reader.load_history(PARSER_HISTORY_NAME).is_err() {
+        println!("No previous history.");
+    }
 
-        match io::stdin().read_line(&mut input) {
-            Ok(_) => {
-                if input.trim() == "quit" {
+    loop {
+        match reader.readline(&format!("{green}parser> {default}")) {
+            Ok(line) => {
+                let _ = reader.add_history_entry(line.as_str());
+                if line.trim() == "quit" {
                     break;
                 }
-                p.update(&input);
+                p.update(&line);
                 match p.parse_stmt() {
                     Ok(s) => {
                         dbg!(s);
                     }
                     Err(e) => {
-                        println!("ParseErr: {:?}", e);
+                        println!("{:?}", e);
                     }
                 }
             }
@@ -49,6 +52,7 @@ fn main() {
             }
         }
     }
+    reader.save_history(PARSER_HISTORY_NAME).unwrap();
 }
 
 fn optional(index: u32) -> Option<u32> {
