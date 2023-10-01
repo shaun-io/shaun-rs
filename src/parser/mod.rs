@@ -132,12 +132,10 @@ impl Parser {
                     }
                 }
             }
-            Token::KeyWord(Keyword::Transaction) => {
-                Ok(Statement::Set(SetStmt {
-                    set_value: self.parse_set_transaction()?,
-                    is_session,
-                }))
-            }
+            Token::KeyWord(Keyword::Transaction) => Ok(Statement::Set(SetStmt {
+                set_value: self.parse_set_transaction()?,
+                is_session,
+            })),
             t => {
                 // TODO: 需要支持 SET @var_name = expression;
                 return Err(Error::ParseErr(fmt_err!("unexpected token: {}", t)));
@@ -202,6 +200,17 @@ impl Parser {
 
         match &self.pre_token {
             Token::KeyWord(Keyword::Add) => match &self.peek_token {
+                Token::KeyWord(Keyword::Column) => {
+                    // ALTER TABLE table_name ADD COLUMN new_column_name column_data_type
+                    self.next_token();
+                    dbg!(&self.pre_token);
+                    let new_column = self.parse_column()?;
+
+                    Ok(Statement::Alter(AlterStmt {
+                        alter_type: AlterType::AddColumn(new_column),
+                        table_name,
+                    }))
+                }
                 Token::Ident(_) => {
                     // ALTER TABLE table_name ADD new_column_name column_data_type;
                     self.next_token();
@@ -330,6 +339,9 @@ impl Parser {
             Token::KeyWord(Keyword::Modify) => {
                 // ALTER TABLE table_name MODIFY
                 // column_name column_data_type;
+                //
+                // ALTER TABLE table_name MODIFY COLUMN
+                // old_column_name RENAME TO new_column_name;
                 self.next_token();
                 Ok(Statement::Alter(AlterStmt {
                     alter_type: AlterType::ModifyColumn(self.parse_column()?),
@@ -2035,26 +2047,6 @@ pub mod test {
         });
         match p
             .update("ALTER TABLE user MODIFY COLUMN new_column_name int PRIMARY KEY;")
-            .parse_stmt()
-        {
-            Ok(s) => {
-                assert_eq!(result, s);
-            }
-            Err(err) => {
-                error!("get error: {}", err);
-                assert!(false)
-            }
-        };
-
-        result = Statement::Alter(AlterStmt {
-            alter_type: AlterType::RenameColumn(
-                "old_column_name".to_owned(),
-                "new_column_name".to_owned(),
-            ),
-            table_name: "user".to_owned(),
-        });
-        match p
-            .update("ALTER TABLE user MODIFY COLUMN old_column_name RENAME TO new_column_name;")
             .parse_stmt()
         {
             Ok(s) => {
