@@ -694,13 +694,6 @@ impl Parser {
                         return Err(Error::ParseErr(fmt_err!("ORDER BY exp should't be none")));
                     }
                 },
-                // if self.next_if_keyword(Keyword::Asc) {
-                //     OrderByType::Asc
-                // } else if self.next_if_keyword(Keyword::Desc) {
-                //     OrderByType::Desc
-                // } else {
-                //     OrderByType::Asc
-                // },
                 match self.pre_token {
                     Token::KeyWord(Keyword::Asc) => OrderByType::Asc,
                     Token::KeyWord(Keyword::Desc) => OrderByType::Desc,
@@ -1224,11 +1217,24 @@ impl Parser {
 #[cfg(test)]
 pub mod test {
 
+    macro_rules! test_parser {
+        ( $($name:ident: $sql:expr => $except:expr,  )* ) => {
+            $(
+                #[test]
+                fn $name() {
+                    init();
+                    let mut parser = Parser::new_parser($sql.to_owned());
+                    let result = parser.parse_stmt();
+                    assert_eq!(result, $except);
+                }
+            )*
+        };
+    }
+
     use std::vec;
 
     use super::stmt::*;
     use super::*;
-    use log::error;
     use std::io::Write;
 
     #[cfg(test)]
@@ -1254,13 +1260,8 @@ pub mod test {
         });
     }
 
-    // todo: 里面的部分代码可以用宏简化
-    #[test]
-    fn parse_create_test() {
-        // 1. 测试最近本的 table 构建, 表中列为最简单列
-        let mut sql = "create table person (id int primary key, name string not null default 'tangruilin', age int unique, class int index references country);";
-        let mut parser = Parser::new_parser(sql.to_owned());
-        let mut expect = Statement::CreateTable(stmt::CreateTableStmt {
+    test_parser! {
+        create_table_success: "create table person (id int primary key, name string not null default 'tangruilin', age int unique, class int index references country);" => Ok(Statement::CreateTable(stmt::CreateTableStmt {
             columns: vec![
                 column::Column {
                     name: "id".to_string(),
@@ -1306,155 +1307,32 @@ pub mod test {
                 },
             ],
             table_name: "person".to_string(),
-        });
-        match parser.parse_stmt() {
-            Ok(result) => {
-                assert_eq!(expect, result);
-            }
-            Err(err) => {
-                dbg!(err);
-                assert!(false)
-            }
-        }
-        // 2. 测试 parse 的时候, colum 同时出现 not null 和 null, 最终导致解析失败
-        sql = "create table person (id int not null null);";
-
-        match parser.update(sql).parse_stmt() {
-            Ok(result) => {
-                dbg!(fmt_err!("except error, but get {}", result));
-                assert!(false);
-            }
-            Err(err) => {
-                assert_eq!(
-                    err,
-                    Error::ParseErr(
-                        "Column id can't be both not nullable and nullable".to_string()
-                    )
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn parse_transaction_test() {
-        init();
-
-        let mut sql = "begin transaction;";
-        let mut parser = Parser::new_parser(sql.to_owned());
-        let mut result = Statement::Begin(BeginStmt {
+        })),
+        create_table_failed: "create table person (id int not null null);" => Err(Error::ParseErr(
+                        "Column id can't be both not nullable and nullable".to_string())),
+        transaction_begin_transaction: "begin transaction;" => Ok(Statement::Begin(BeginStmt {
             is_readonly: false,
             version: None,
-        });
-        match parser.parse_stmt() {
-            Ok(s) => {
-                assert_eq!(result, s);
-            }
-            Err(err) => {
-                error!("expected: {} but get {}", result, err);
-                assert!(false);
-            }
-        }
-
-        sql = "begin transaction read only;";
-        result = Statement::Begin(BeginStmt {
+        })),
+        transaction_read_only_begin: "begin transaction read only;" => Ok(Statement::Begin(BeginStmt {
             is_readonly: true,
             version: None,
-        });
-
-        parser.update(sql);
-        match parser.parse_stmt() {
-            Ok(s) => {
-                assert_eq!(result, s);
-            }
-            Err(err) => {
-                error!("expected: {} but get {}", result, err);
-                assert!(false);
-            }
-        }
-
-        sql = "begin;";
-        result = Statement::Begin(BeginStmt {
+        })),
+        transaction_begin: "begin;" => Ok(Statement::Begin(BeginStmt {
             is_readonly: false,
             version: None,
-        });
-
-        parser.update(sql);
-        match parser.parse_stmt() {
-            Ok(s) => {
-                assert_eq!(result, s);
-            }
-            Err(e) => {
-                error!("expected: {} but get {}", result, e);
-                assert!(false);
-            }
-        }
-
-        sql = "commit;";
-        result = Statement::Commit;
-
-        parser.update(sql);
-        match parser.parse_stmt() {
-            Ok(s) => {
-                assert_eq!(result, s);
-            }
-            Err(e) => {
-                error!("expected: {} but get {}", result, e);
-                assert!(false);
-            }
-        }
-
-        sql = "rollback";
-        result = Statement::Rollback;
-        parser.update(sql);
-        match parser.parse_stmt() {
-            Ok(s) => {
-                assert_eq!(result, s);
-            }
-            Err(e) => {
-                error!("expected: {} but get {}", result, e);
-                assert!(false);
-            }
-        }
-
-        sql = "BEGIN TRANSACTION READ WRITE";
-        result = Statement::Begin(BeginStmt {
+        })),
+        transaction_commit: "commit;" => Ok(Statement::Commit),
+        transaction_rollback: "rollback" => Ok(Statement::Rollback),
+        transaction_read_write: "BEGIN TRANSACTION READ WRITE" => Ok(Statement::Begin(BeginStmt {
             is_readonly: false,
             version: None,
-        });
-        parser.update(sql);
-        match parser.parse_stmt() {
-            Ok(s) => {
-                assert_eq!(result, s);
-            }
-            Err(e) => {
-                error!("expected: {} but get {}", result, e);
-                assert!(false);
-            }
-        }
-
-        sql = "BEGIN TRANSACTION READ ONLY AS OF SYSTEM TIME 129012313;";
-        result = Statement::Begin(BeginStmt {
+        })),
+        transaction_read_only_with_version: "BEGIN TRANSACTION READ ONLY AS OF SYSTEM TIME 129012313;" => Ok( Statement::Begin(BeginStmt {
             is_readonly: true,
             version: Some(129012313),
-        });
-        parser.update(sql);
-        match parser.parse_stmt() {
-            Ok(s) => {
-                assert_eq!(result, s);
-            }
-            Err(e) => {
-                error!("expected: {} but get {}", result, e);
-                assert!(false);
-            }
-        }
-    }
-
-    #[test]
-    fn parse_select_test() {
-        init();
-
-        let mut p = Parser::new_parser("SELECT c1 AS c2 FROM table_1;".to_owned());
-        let mut result = Statement::Select(SelectStmt {
+        })),
+        select_base: "SELECT c1 AS c2 FROM table_1;" => Ok(Statement::Select(SelectStmt {
             selects: vec![(
                 Expression::Field(None, "c1".to_owned()),
                 Some("c2".to_owned()),
@@ -1469,22 +1347,11 @@ pub mod test {
             order: None,
             limit: None,
             offset: None,
-        });
-        dbg!(&result);
-        match p.parse_stmt() {
-            Ok(s) => {
-                assert_eq!(result, s);
-            }
-            Err(e) => {
-                error!("expected: {} but get {}", result, e);
-                assert!(false);
-            }
-        }
-        let mut sql = r#"SELECT 1 + 2 AS c1, user.id FROM table_1 AS table_2
+        })),
+        select_with_middle_complex: r#"SELECT 1 + 2 AS c1, user.id FROM table_1 AS table_2
                                 LEFT JOIN table_3 AS table_4
                                 ON table_2.id = table_4.id
-                                ORDER BY table_2.id ASC OFFSET 10;"#;
-        result = Statement::Select(SelectStmt {
+                                ORDER BY table_2.id ASC OFFSET 10;"# => Ok(Statement::Select(SelectStmt {
             selects: vec![
                 ((
                     Expression::Operation(Operation::Add(
@@ -1528,28 +1395,15 @@ pub mod test {
             )]),
             offset: Some(Expression::Literal(Literal::Int(10))),
             limit: None,
-        });
-        match p.update(sql).parse_stmt() {
-            Ok(s) => {
-                assert_eq!(result, s);
-            }
-            Err(e) => {
-                error!("expected: {} but get {}", result, e);
-                assert!(false);
-            }
-        };
-
-        error!("here");
-
-        sql = r#"SELECT c.category_name, COUNT(p.product_id) AS product_count, AVG(p.unit_price) AS avg_price
+        })),
+        select_with_high_complex: r#"SELECT c.category_name, COUNT(p.product_id) AS product_count, AVG(p.unit_price) AS avg_price
                  FROM categories c
                  LEFT JOIN products p ON c.category_id = p.category_id
                  RIGHT JOIN orders o ON p.product_id = o.product_id
                  WHERE o.order_date >= '2023-01-01' AND o.order_date <= '2023-12-31'
                  GROUP BY c.category_name
                  HAVING COUNT(p.product_id) >= 5
-                 ORDER BY avg_price DESC OFFSET 4 + 10 * 10.1 LIMIT 3;"#;
-        result = Statement::Select(SelectStmt {
+                 ORDER BY avg_price DESC OFFSET 4 + 10 * 10.1 LIMIT 3;"# => Ok(Statement::Select(SelectStmt {
             selects: vec![
                 (
                     Expression::Field(Some("c".to_owned()), "category_name".to_owned()),
@@ -1660,25 +1514,12 @@ pub mod test {
                 ))),
             ))),
             limit: Some(Expression::Literal(Literal::Int(3))),
-        });
-
-        match p.update(sql).parse_stmt() {
-            Ok(s) => {
-                dbg!(&result, &s);
-                assert_eq!(result, s);
-            }
-            Err(e) => {
-                error!("expected: {} but get {}", result, e);
-                assert!(false);
-            }
-        };
-
-        sql = r#"SELECT 1 + 2 AS c1, account.id
+        })),
+        select_with_simple_expression: r#"SELECT 1 + 2 AS c1, account.id
                  FROM table_1
                  OFFSET TRUE AND FALSE
                  LIMIT 10;
-                "#;
-        result = Statement::Select(SelectStmt {
+                "# => Ok(Statement::Select(SelectStmt {
             selects: vec![
                 (
                     Expression::Operation(Operation::Add(
@@ -1705,20 +1546,8 @@ pub mod test {
                 Box::new(Expression::Literal(Literal::Bool(false))),
             ))),
             limit: Some(Expression::Literal(Literal::Int(10))),
-        });
-        match p.update(sql).parse_stmt() {
-            Ok(s) => {
-                dbg!(&result, &s);
-                assert_eq!(result, s);
-            }
-            Err(e) => {
-                error!("expected: {} but get {}", result, e);
-                assert!(false);
-            }
-        };
-
-        sql = r#"SELECT c1.id FROM b2 AS c1 ORDER BY c1.id;"#;
-        result = Statement::Select(SelectStmt {
+        })),
+        select_with_alias: r#"SELECT c1.id FROM b2 AS c1 ORDER BY c1.id;"# => Ok(Statement::Select(SelectStmt {
             selects: vec![(
                 Expression::Field(Some("c1".to_owned()), "id".to_owned()),
                 None,
@@ -1736,20 +1565,8 @@ pub mod test {
             )]),
             offset: None,
             limit: None,
-        });
-        match p.update(sql).parse_stmt() {
-            Ok(s) => {
-                dbg!(&result, &s);
-                assert_eq!(result, s);
-            }
-            Err(e) => {
-                error!("expected: {} but get {}", result, e);
-                assert!(false);
-            }
-        };
-
-        sql = r#"SELECT COUNT(*) FROM user WHERE user.id != NULL;"#;
-        result = Statement::Select(SelectStmt {
+        })),
+        select_with_aggression: r#"SELECT COUNT(*) FROM user WHERE user.id != NULL;"# => Ok(Statement::Select(SelectStmt {
             selects: vec![(
                 Expression::Function("COUNT".to_owned(), vec![Expression::Literal(Literal::All)]),
                 None,
@@ -1767,20 +1584,8 @@ pub mod test {
             order: None,
             offset: None,
             limit: None,
-        });
-        match p.update(sql).parse_stmt() {
-            Ok(s) => {
-                dbg!(&result, &s);
-                assert_eq!(result, s);
-            }
-            Err(e) => {
-                error!("expected: {} but get {}", result, e);
-                assert!(false);
-            }
-        };
-
-        sql = "SELECT 1 + 2 AS c1, c3.id FROM c5 JOIN c6 ON c5.id = c6.id;";
-        result = Statement::Select(SelectStmt {
+        })),
+        select_with_join: "SELECT 1 + 2 AS c1, c3.id FROM c5 JOIN c6 ON c5.id = c6.id;" => Ok( Statement::Select(SelectStmt {
             selects: vec![
                 (
                     Expression::Operation(Operation::Add(
@@ -1815,21 +1620,9 @@ pub mod test {
             order: None,
             offset: None,
             limit: None,
-        });
-        match p.update(sql).parse_stmt() {
-            Ok(s) => {
-                dbg!(&result, &s);
-                assert_eq!(result, s);
-            }
-            Err(e) => {
-                error!("expected: {} but get {}", result, e);
-                assert!(false);
-            }
-        };
-
-        sql = r#"SELECT COUNT(*) AS c1, AVG(test_1.id) AS c2, 1 + 2 * (-10) AS c3
-                 FROM test_1 WHERE c1.id = -10;"#;
-        result = Statement::Select(SelectStmt {
+        })),
+        select_with_aggression_and_alias: r#"SELECT COUNT(*) AS c1, AVG(test_1.id) AS c2, 1 + 2 * (-10) AS c3
+                 FROM test_1 WHERE c1.id = -10;"# => Ok(Statement::Select(SelectStmt {
             selects: vec![
                 (
                     Expression::Function(
@@ -1876,16 +1669,6 @@ pub mod test {
             order: None,
             offset: None,
             limit: None,
-        });
-        match p.update(sql).parse_stmt() {
-            Ok(s) => {
-                dbg!(&result, &s);
-                assert_eq!(result, s);
-            }
-            Err(e) => {
-                error!("expected: {} but get {}", result, e);
-                assert!(false);
-            }
-        };
+        })),
     }
 }
