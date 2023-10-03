@@ -9,7 +9,7 @@ mod stmt;
 pub mod token;
 
 use crate::parser::operator::{is_infix_oper, is_prefix_oper};
-use crate::parser::stmt::{AlterStmt, AlterType};
+use crate::parser::stmt::{AlterStmt, AlterType, CreateIndexStmt};
 use crate::parser::{operation::Operation, operator::match_precedence};
 
 use crate::{
@@ -419,7 +419,77 @@ impl Parser {
         unimplemented!()
     }
 
+    fn parse_create_index_stmt(&mut self) -> Result<Statement> {
+        // CREATE [UNIQUE] INDEX [index_name]
+        // ON [table_name] (column_name_1, column_name_2);
+        let is_unique = match self.peek_token {
+            Token::KeyWord(Keyword::Unique) => {
+                self.next_token();
+                match self.peek_token.clone() {
+                    Token::KeyWord(Keyword::Index) => true,
+                    _ => {
+                        return Err(Error::ParseErr(fmt_err!(
+                            "unexpected token: {}",
+                            self.peek_token
+                        )));
+                    }
+                }
+            }
+            _ => false,
+        };
+        self.next_token();
+        let index_name = self.next_ident()?;
+        self.next_expected_keyword(Keyword::On)?;
+        let table_name = self.next_ident()?;
+        match self.peek_token {
+            Token::LeftParen => {}
+            _ => {
+                return Err(Error::ParseErr(fmt_err!(
+                    "unexpected token: {}",
+                    self.peek_token
+                )));
+            }
+        };
+        self.next_token();
+        let mut columns = Vec::new();
+        loop {
+            columns.push(self.next_ident()?);
+            let token = self.next_token();
+
+            match token {
+                Token::Comma => continue,
+                Token::RightParen => break,
+                _ => {
+                    return Err(Error::ParseErr(fmt_err!(
+                        "unexpected token {:?}, want Comma or RightParen",
+                        token
+                    )));
+                }
+            }
+        }
+
+        Ok(Statement::CreateIndex(CreateIndexStmt {
+            is_unique,
+            index_name,
+            table_name,
+            columns,
+        }))
+    }
+
     fn parse_create_stmt(&mut self) -> Result<Statement> {
+        match self.peek_token {
+            Token::KeyWord(Keyword::Table) => self.parse_create_table_stmt(),
+            Token::KeyWord(Keyword::Unique) | Token::KeyWord(Keyword::Index) => {
+                self.parse_create_index_stmt()
+            }
+            _ => Err(Error::ParseErr(fmt_err!(
+                "unexpected token: {}",
+                self.peek_token
+            ))),
+        }
+    }
+
+    fn parse_create_table_stmt(&mut self) -> Result<Statement> {
         // CREATE TABLE table_name
         //  (xxx_name xxx_addr xxx_addr xxx_addr,
         //  xxx, xxx);;
@@ -1991,6 +2061,20 @@ pub mod test {
                     "account_2".to_owned(),
                 ),
                 table_name: "user".to_owned(),
+            })),
+        create_index_test_1: r#"CREATE INDEX xxx_name ON table_name (id, password, account);"# =>
+            Ok(Statement::CreateIndex(CreateIndexStmt {
+                is_unique: false,
+                index_name: "xxx_name".to_owned(),
+                table_name: "table_name".to_owned(),
+                columns: vec!["id".to_owned(), "password".to_owned(), "account".to_owned()],
+            })),
+        create_unique_index_test2: r#"CREATE UNIQUE INDEX index_name ON table_name (id, password);"# =>
+            Ok(Statement::CreateIndex(CreateIndexStmt {
+                is_unique: true,
+                index_name: "index_name".to_owned(),
+                table_name: "table_name".to_owned(),
+                columns: vec!["id".to_owned(), "password".to_owned()],
             })),
         set_transaction_test_1: r#"SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;"# =>
             Ok(Statement::Set(SetStmt {

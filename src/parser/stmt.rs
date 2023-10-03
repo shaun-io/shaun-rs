@@ -161,8 +161,8 @@ pub struct SetStmt {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateIndexStmt {
-    pub index_name: Option<String>,
-    pub is_unqiue: bool, // 是否是唯一索引
+    pub index_name: String,
+    pub is_unique: bool, // 是否是唯一索引
     pub table_name: String,
     pub columns: Vec<String>,
 }
