@@ -1,5 +1,3 @@
-use crate::parser::Parser;
-
 use crate::parser::expression::Expression;
 use crate::parser::DataType;
 
