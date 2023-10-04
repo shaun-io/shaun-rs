@@ -60,8 +60,10 @@ impl std::fmt::Display for BeginStmt {
     }
 }
 
-#[derive(Eq, PartialEq, Debug)]
-pub struct ExplainStmt {}
+#[derive(PartialEq, Debug)]
+pub struct ExplainStmt {
+    pub statement: Box<Statement>,
+}
 #[derive(PartialEq, Debug)]
 pub struct CreateTableStmt {
     pub columns: Vec<Column>,
@@ -69,24 +71,24 @@ pub struct CreateTableStmt {
 }
 #[derive(Eq, PartialEq, Debug)]
 pub struct DropTableStmt {
-    pub table: String,
+    pub table_name: String,
 }
 #[derive(PartialEq, Debug)]
 pub struct DeleteTableStmt {
-    pub table: String,
+    pub table_name: String,
     pub r#where: Option<Expression>,
 }
 #[derive(PartialEq, Debug)]
 pub struct InsertStmt {
-    pub table: String,
+    pub table_name: String,
     pub columns: Option<Vec<String>>,
     pub values: Vec<Vec<Option<Expression>>>,
 }
 #[derive(PartialEq, Debug)]
 pub struct UpdateStmt {
-    pub table: String,
-    pub set: BTreeMap<String, Option<Expression>>,
-    pub r#where: Option<Expression>,
+    pub table_name: String,
+    pub set: BTreeMap<String, Expression>,
+    pub wheres: Option<Expression>,
 }
 
 #[derive(Debug, PartialEq, Clone)]

@@ -26,7 +26,9 @@ use std::collections::BTreeMap;
 use stmt::Statement;
 use token::Token;
 
-use self::stmt::{DropTableStmt, SetStmt, SetVariableType, TransactionIsolationLevel, UpdateStmt};
+use self::stmt::{
+    DropTableStmt, ExplainStmt, SetStmt, SetVariableType, TransactionIsolationLevel, UpdateStmt,
+};
 use self::{
     column::Column,
     operator::Precedence,
@@ -414,17 +416,17 @@ impl Parser {
 
     fn parse_delete_stmt(&mut self) -> Result<Statement> {
         self.next_expected_keyword(Keyword::From)?;
-        let table = self.next_ident()?;
+        let table_name = self.next_ident()?;
+        self.next_token();
         Ok(Statement::Delete(DeleteTableStmt {
-            table,
+            table_name,
             r#where: self.parse_clause_where()?,
         }))
     }
 
     fn parse_insert_stmt(&mut self) -> Result<Statement> {
-        // INSERT INTO person (name, age, class) VALUES ("tangruilin", 14, "Grade Six"), ("yinyuting", 15, "Grade Five")
         self.next_expected_keyword(Keyword::Into)?;
-        let table = self.next_ident()?;
+        let table_name = self.next_ident()?;
         let columns = if self.peek_token == Token::LeftParen {
             // todo: 这里应该有一个 next_if_peek 的方法处理这个情况
             self.next_token();
@@ -478,9 +480,9 @@ impl Parser {
         }
 
         Ok(Statement::Insert(stmt::InsertStmt {
-            table,
+            table_name,
             columns,
-            values: values,
+            values,
         }))
     }
 
@@ -710,8 +712,9 @@ impl Parser {
     }
 
     fn parse_drop_stmt(&mut self) -> Result<Statement> {
+        self.next_expected_keyword(Keyword::Table)?;
         Ok(Statement::DropTable(DropTableStmt {
-            table: self.next_ident()?,
+            table_name: self.next_ident()?,
         }))
     }
 
@@ -1119,7 +1122,7 @@ impl Parser {
     }
 
     fn parse_update_stmt(&mut self) -> Result<Statement> {
-        let table = self.next_ident()?;
+        let table_name = self.next_ident()?;
 
         self.next_expected_keyword(Keyword::Set)?;
 
@@ -1128,7 +1131,13 @@ impl Parser {
         loop {
             let column = self.next_ident()?;
             self.next_expected_token(Token::Equal)?;
+            self.next_token();
             let expr = self.parse_expression(Precedence::Lowest)?;
+            let expr = match self.parse_expression(Precedence::Lowest)? {
+                Some(e) => e,
+                None => return Err(Error::ParseErr(fmt_err!("expr can not be none"))),
+            };
+
             if set.contains_key(&column) {
                 return Err(Error::OtherErr(fmt_err!(
                     "Duplicate values given for column {}",
@@ -1136,20 +1145,23 @@ impl Parser {
                 )));
             }
             set.insert(column, expr);
-            if self.peek_token == Token::Comma {
+            if self.peek_token != Token::Comma {
                 self.next_token();
                 break;
             }
         }
         Ok(Statement::Update(UpdateStmt {
-            table,
+            table_name,
             set,
-            r#where: self.parse_clause_where()?,
+            wheres: self.parse_clause_where()?,
         }))
     }
 
     fn parse_explain_stmt(&mut self) -> Result<Statement> {
-        unimplemented!()
+        self.next_token();
+        Ok(Statement::Explain(ExplainStmt {
+            statement: Box::new(self.parse_stmt()?),
+        }))
     }
 
     fn next_token(&mut self) -> &Token {
@@ -1692,8 +1704,40 @@ pub mod test {
     }
 
     test_parser! {
+        explain_base_sql: "explain drop table person" => Ok(Statement::Explain(ExplainStmt {
+            statement: Box::new(Statement::DropTable(DropTableStmt {
+                table_name: "person".to_owned(),
+            })),
+        })),
+        update_table_base: "update person set name = 'tangruilin' where id = 1;" => Ok(Statement::Update(UpdateStmt {
+            table_name: "person".to_owned(),
+            set: BTreeMap::from([(
+                "name".to_owned(),
+                Expression::Literal(Literal::String(
+                    "tangruilin".to_owned(),
+                )),
+            )]),
+            wheres: Some(Expression::Operation(Operation::Equal(
+                Box::new(Expression::Field(None, "id".to_owned())),
+                Box::new(Expression::Literal(Literal::Int(1))),
+            ))),
+        })),
+        drop_table_base: "drop table person;" => Ok(Statement::DropTable(DropTableStmt {
+            table_name: "person".to_owned(),
+        })),
+        delete_table_base: "delete from person where id = 1;" => Ok(Statement::Delete(DeleteTableStmt {
+            table_name: "person".to_owned(),
+            r#where: Some(Expression::Operation(Operation::Equal(
+                Box::new(Expression::Field(None, "id".to_owned())),
+                Box::new(Expression::Literal(Literal::Int(1))),
+            ))),
+        })),
+        delete_table_without_where: "delete from person;" => Ok(Statement::Delete(DeleteTableStmt {
+            table_name: "person".to_owned(),
+            r#where: None,
+        })),
         insert_table_base: "insert into person (id, name, age) values (1, 'tangruilin', 14)" => Ok(Statement::Insert(InsertStmt {
-                table: "person".to_owned(),
+                table_name: "person".to_owned(),
                 columns: Some(["id".to_owned(), "name".to_owned(), "age".to_owned()].to_vec()),
                 values: [[
                     Some(Expression::Literal(Literal::Int(1))),
@@ -1707,7 +1751,7 @@ pub mod test {
             })),
 
         insert_without_column_name: "insert into person values (1, 'tangruilin', 14)" => Ok(Statement::Insert(InsertStmt {
-                table: "person".to_owned(),
+                table_name: "person".to_owned(),
                 columns: None,
                 values: [[
                     Some(Expression::Literal(Literal::Int(1))),
