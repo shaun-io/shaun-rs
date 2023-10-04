@@ -1,4 +1,3 @@
-use std::io;
 use std::io::Write;
 
 use shaun::parser::Parser;
