@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::parser::column::Column;
 
 use super::expression::Expression;
@@ -66,17 +68,26 @@ pub struct CreateTableStmt {
     pub table_name: String,
 }
 #[derive(Eq, PartialEq, Debug)]
-pub struct DropTableStmt {}
-#[derive(Eq, PartialEq, Debug)]
-pub struct DeleteTableStmt {}
+pub struct DropTableStmt {
+    pub table: String,
+}
+#[derive(PartialEq, Debug)]
+pub struct DeleteTableStmt {
+    pub table: String,
+    pub r#where: Option<Expression>,
+}
 #[derive(PartialEq, Debug)]
 pub struct InsertStmt {
     pub table: String,
     pub columns: Option<Vec<String>>,
     pub values: Vec<Vec<Option<Expression>>>,
 }
-#[derive(Eq, PartialEq, Debug)]
-pub struct UpdateStmt {}
+#[derive(PartialEq, Debug)]
+pub struct UpdateStmt {
+    pub table: String,
+    pub set: BTreeMap<String, Option<Expression>>,
+    pub r#where: Option<Expression>,
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum FromItem {
