@@ -9,6 +9,7 @@ mod stmt;
 pub mod token;
 
 use crate::parser::operator::{is_infix_oper, is_prefix_oper};
+use crate::parser::stmt::{AlterStmt, AlterType, CreateIndexStmt};
 use crate::parser::{operation::Operation, operator::match_precedence};
 
 use crate::{
@@ -24,6 +25,7 @@ use log::debug;
 use stmt::Statement;
 use token::Token;
 
+use self::stmt::{SetStmt, SetVariableType, TransactionIsolationLevel};
 use self::{
     column::Column,
     operator::Precedence,
@@ -77,13 +79,278 @@ impl Parser {
             Token::KeyWord(Keyword::Insert) => self.parse_insert_stmt(),
             Token::KeyWord(Keyword::Select) => self.parse_select_stmt(),
             Token::KeyWord(Keyword::Update) => self.parse_update_stmt(),
+            Token::KeyWord(Keyword::Alter) => self.parse_alter_stmt(),
+
+            Token::KeyWord(Keyword::Show) => self.parse_show_stmt(),
 
             Token::KeyWord(Keyword::Explain) => self.parse_explain_stmt(),
+            Token::KeyWord(Keyword::Describe) => match &self.peek_token {
+                Token::Ident(i) => Ok(Statement::DescribeTable(i.to_owned())),
+                _ => Err(Error::ParseErr(fmt_err!(
+                    "unexpected token: {}",
+                    &self.peek_token
+                ))),
+            },
+            Token::KeyWord(Keyword::Set) => self.parse_set_stmt(),
 
             t => Err(Error::ParseErr(fmt_err!("unexpected token: {}", t))),
         };
 
         result
+    }
+
+    fn parse_set_stmt(&mut self) -> Result<Statement> {
+        let mut is_session = true;
+        match &self.peek_token {
+            Token::KeyWord(Keyword::Session) => {
+                if !is_session {
+                    return Err(Error::ParseErr(fmt_err!("SET SESSION GLOBAL is not valid")));
+                }
+                self.next_token();
+                match self.peek_token.clone() {
+                    Token::KeyWord(Keyword::Transaction) => Ok(Statement::Set(SetStmt {
+                        set_value: self.parse_set_transaction()?,
+
+                        is_session,
+                    })),
+                    t => {
+                        return Err(Error::ParseErr(fmt_err!("unexpected token: {}", t)));
+                    }
+                }
+            }
+            Token::KeyWord(Keyword::Global) => {
+                is_session = false;
+
+                self.next_token();
+                match self.peek_token.clone() {
+                    Token::KeyWord(Keyword::Transaction) => Ok(Statement::Set(SetStmt {
+                        set_value: self.parse_set_transaction()?,
+                        is_session,
+                    })),
+                    t => {
+                        return Err(Error::ParseErr(fmt_err!("unexpected token: {}", t)));
+                    }
+                }
+            }
+            Token::KeyWord(Keyword::Transaction) => Ok(Statement::Set(SetStmt {
+                set_value: self.parse_set_transaction()?,
+                is_session,
+            })),
+            t => {
+                // TODO: 需要支持 SET @var_name = expression;
+                return Err(Error::ParseErr(fmt_err!("unexpected token: {}", t)));
+            }
+        }
+    }
+
+    fn parse_set_transaction(&mut self) -> Result<SetVariableType> {
+        self.next_token();
+        self.next_expected_keyword(Keyword::Isolation)?;
+        self.next_expected_keyword(Keyword::Level)?;
+
+        match &self.peek_token {
+            Token::KeyWord(Keyword::Read) => {
+                self.next_token();
+                match self.peek_token.clone() {
+                    Token::KeyWord(Keyword::Committed) => Ok(SetVariableType::Transaction(
+                        TransactionIsolationLevel::ReadCommitted,
+                    )),
+
+                    Token::KeyWord(Keyword::Uncommitted) => Ok(SetVariableType::Transaction(
+                        TransactionIsolationLevel::ReadUncommitted,
+                    )),
+
+                    t => Err(Error::ParseErr(fmt_err!("unexpected token: {}", t))),
+                }
+            }
+            Token::KeyWord(Keyword::Repeatable) => {
+                self.next_token();
+                match self.peek_token.clone() {
+                    Token::KeyWord(Keyword::Read) => Ok(SetVariableType::Transaction(
+                        TransactionIsolationLevel::RepeatableRead,
+                    )),
+
+                    t => Err(Error::ParseErr(fmt_err!("unexpected token: {}", t))),
+                }
+            }
+            Token::KeyWord(Keyword::Serializable) => Ok(SetVariableType::Transaction(
+                TransactionIsolationLevel::Serializable,
+            )),
+            t => Err(Error::ParseErr(fmt_err!("unexpected token: {}", t))),
+        }
+    }
+
+    fn parse_show_stmt(&mut self) -> Result<Statement> {
+        match &self.peek_token {
+            Token::KeyWord(Keyword::Tables) => Ok(Statement::ShowTables),
+            Token::KeyWord(Keyword::Databases) => Ok(Statement::ShowDatabase),
+            _ => Err(Error::ParseErr(fmt_err!(
+                "unexpected token: {}",
+                &self.peek_token
+            ))),
+        }
+    }
+
+    fn parse_alter_stmt(&mut self) -> Result<Statement> {
+        // ALTER TABLE table_name
+        self.next_expected_keyword(Keyword::Table)?;
+
+        let table_name = self.next_ident()?;
+        self.next_token();
+
+        match &self.pre_token {
+            Token::KeyWord(Keyword::Add) => match &self.peek_token {
+                Token::KeyWord(Keyword::Column) => {
+                    // ALTER TABLE table_name ADD COLUMN new_column_name column_data_type
+                    self.next_token();
+                    dbg!(&self.pre_token);
+                    let new_column = self.parse_column()?;
+
+                    Ok(Statement::Alter(AlterStmt {
+                        alter_type: AlterType::AddColumn(new_column),
+                        table_name,
+                    }))
+                }
+                Token::Ident(_) => {
+                    // ALTER TABLE table_name ADD new_column_name column_data_type;
+                    self.next_token();
+                    let new_column = self.parse_column()?;
+
+                    Ok(Statement::Alter(AlterStmt {
+                        alter_type: AlterType::AddColumn(new_column),
+                        table_name,
+                    }))
+                }
+
+                Token::KeyWord(Keyword::Index) => {
+                    // ALTER TABLE table_name ADD INDEX index_name(option) (column_1_name, xxx);
+                    self.next_token();
+
+                    let add_index_name = match self.peek_token.clone() {
+                        Token::Ident(i) => {
+                            self.next_token();
+                            Some(i)
+                        }
+                        _ => None,
+                    };
+                    let mut column_list = vec![];
+                    match self.peek_token.clone() {
+                        Token::LeftParen => {
+                            self.next_token();
+                            loop {
+                                match self.peek_token.clone() {
+                                    Token::Ident(i) => {
+                                        self.next_token();
+                                        column_list.push(i);
+                                    }
+                                    Token::Comma => {
+                                        self.next_token();
+                                        continue;
+                                    }
+                                    Token::RightParen => {
+                                        self.next_token();
+                                        break;
+                                    }
+                                    _ => {
+                                        return Err(Error::ParseErr(fmt_err!(
+                                            "expected Token::LeftParen, but get: {}",
+                                            &self.peek_token
+                                        )));
+                                    }
+                                }
+                            }
+
+                            Ok(Statement::Alter(AlterStmt {
+                                alter_type: AlterType::AddIndex(add_index_name, column_list),
+                                table_name,
+                            }))
+                        }
+                        _ => Err(Error::ParseErr(fmt_err!(
+                            "expected Token::LeftParen, but get: {}",
+                            &self.peek_token
+                        ))),
+                    }
+                }
+                _ => Err(Error::ParseErr(fmt_err!(
+                    "unexpected token: {}",
+                    &self.peek_token
+                ))),
+            },
+            Token::KeyWord(Keyword::Drop) => {
+                match &self.peek_token {
+                    Token::KeyWord(Keyword::Column) => {
+                        // ALTER TABLE table_name
+                        // DROP column_name;
+                        self.next_token();
+                        let column_name = self.next_ident()?;
+                        Ok(Statement::Alter(AlterStmt {
+                            alter_type: AlterType::DropColumn(column_name),
+                            table_name,
+                        }))
+                    }
+                    Token::KeyWord(Keyword::Index) => {
+                        // ALTER TABLE table_name
+                        // DROP INDEX index_name;
+                        self.next_token();
+                        let index_name = self.next_ident()?;
+
+                        Ok(Statement::Alter(AlterStmt {
+                            alter_type: AlterType::RemoveIndex(index_name),
+                            table_name,
+                        }))
+                    }
+                    _ => Err(Error::ParseErr(fmt_err!(
+                        "unexpected token: {}",
+                        &self.peek_token
+                    ))),
+                }
+            }
+            Token::KeyWord(Keyword::Rename) => {
+                match &self.peek_token {
+                    Token::KeyWord(Keyword::Column) => {
+                        // ALTER TABLE table_name RENAME COLUMN
+                        // old_column_name TO new_column_name;
+                        self.next_token();
+                        let old_column_name = self.next_ident()?;
+                        self.next_expected_keyword(Keyword::To)?;
+                        let new_column_name = self.next_ident()?;
+
+                        Ok(Statement::Alter(AlterStmt {
+                            alter_type: AlterType::RenameColumn(old_column_name, new_column_name),
+                            table_name,
+                        }))
+                    }
+                    Token::KeyWord(Keyword::To) => {
+                        // ALTER TABLE table_name RENAME TO new_table_name;
+                        self.next_token();
+                        let new_table_name = self.next_ident()?;
+
+                        Ok(Statement::Alter(AlterStmt {
+                            alter_type: AlterType::RenameTable(new_table_name),
+                            table_name,
+                        }))
+                    }
+                    _ => Err(Error::ParseErr(fmt_err!(
+                        "unexpected token: {}",
+                        &self.peek_token
+                    ))),
+                }
+            }
+            Token::KeyWord(Keyword::Modify) => {
+                // 修改列的属性
+                // ALTER TABLE table_name MODIFY
+                // column_name column_data_type;
+                self.next_token();
+                Ok(Statement::Alter(AlterStmt {
+                    alter_type: AlterType::ModifyColumn(self.parse_column()?),
+                    table_name,
+                }))
+            }
+            _ => Err(Error::ParseErr(fmt_err!(
+                "ALTER TABLE is not valid unexpected token: {}",
+                &self.pre_token
+            ))),
+        }
     }
 
     fn parse_transaction_stmt(&mut self) -> Result<Statement> {
@@ -152,7 +419,77 @@ impl Parser {
         unimplemented!()
     }
 
+    fn parse_create_index_stmt(&mut self) -> Result<Statement> {
+        // CREATE [UNIQUE] INDEX [index_name]
+        // ON [table_name] (column_name_1, column_name_2);
+        let is_unique = match self.peek_token {
+            Token::KeyWord(Keyword::Unique) => {
+                self.next_token();
+                match self.peek_token.clone() {
+                    Token::KeyWord(Keyword::Index) => true,
+                    _ => {
+                        return Err(Error::ParseErr(fmt_err!(
+                            "unexpected token: {}",
+                            self.peek_token
+                        )));
+                    }
+                }
+            }
+            _ => false,
+        };
+        self.next_token();
+        let index_name = self.next_ident()?;
+        self.next_expected_keyword(Keyword::On)?;
+        let table_name = self.next_ident()?;
+        match self.peek_token {
+            Token::LeftParen => {}
+            _ => {
+                return Err(Error::ParseErr(fmt_err!(
+                    "unexpected token: {}",
+                    self.peek_token
+                )));
+            }
+        };
+        self.next_token();
+        let mut columns = Vec::new();
+        loop {
+            columns.push(self.next_ident()?);
+            let token = self.next_token();
+
+            match token {
+                Token::Comma => continue,
+                Token::RightParen => break,
+                _ => {
+                    return Err(Error::ParseErr(fmt_err!(
+                        "unexpected token {:?}, want Comma or RightParen",
+                        token
+                    )));
+                }
+            }
+        }
+
+        Ok(Statement::CreateIndex(CreateIndexStmt {
+            is_unique,
+            index_name,
+            table_name,
+            columns,
+        }))
+    }
+
     fn parse_create_stmt(&mut self) -> Result<Statement> {
+        match self.peek_token {
+            Token::KeyWord(Keyword::Table) => self.parse_create_table_stmt(),
+            Token::KeyWord(Keyword::Unique) | Token::KeyWord(Keyword::Index) => {
+                self.parse_create_index_stmt()
+            }
+            _ => Err(Error::ParseErr(fmt_err!(
+                "unexpected token: {}",
+                self.peek_token
+            ))),
+        }
+    }
+
+    fn parse_create_table_stmt(&mut self) -> Result<Statement> {
         // CREATE TABLE table_name
         //  (xxx_name xxx_addr xxx_addr xxx_addr,
         //  xxx, xxx);;
@@ -195,19 +532,9 @@ impl Parser {
     }
 
     fn parse_column(&mut self) -> Result<Column> {
-        let name = self.next_ident();
-        let column_name;
+        let column_name = self.next_ident()?;
 
-        match name {
-            Ok(n) => {
-                column_name = n;
-            }
-            Err(e) => {
-                return Err(e);
-            }
-        }
-
-        let mut _column = column::Column {
+        let mut column = column::Column {
             name: column_name,
             data_type: match self.next_token() {
                 Token::KeyWord(Keyword::Bool) => DataType::Bool,
@@ -226,7 +553,7 @@ impl Parser {
 
                 t => {
                     dbg!("unexpected token: {}", t);
-                    return Err(Error::ParseErr(format!("unexpected token: {}", t)));
+                    return Err(Error::ParseErr(fmt_err!("unexpected token: {}", t)));
                 }
             },
             primary_key: false,
@@ -242,48 +569,48 @@ impl Parser {
                 Keyword::Primary => {
                     self.next_token();
                     self.next_expected_keyword(Keyword::Key)?;
-                    _column.primary_key = true;
+                    column.primary_key = true;
                 }
                 Keyword::Null => {
                     self.next_token();
-                    if let Some(false) = _column.nullable {
-                        return Err(Error::ParseErr(format!(
+                    if let Some(false) = column.nullable {
+                        return Err(Error::ParseErr(fmt_err!(
                             "Column {} can't be both not nullable and nullable",
-                            _column.name
+                            column.name
                         )));
                     }
-                    _column.nullable = Some(true);
+                    column.nullable = Some(true);
                 }
                 Keyword::Not => {
                     self.next_token();
                     self.next_expected_keyword(Keyword::Null)?;
-                    _column.nullable = Some(false);
+                    column.nullable = Some(false);
                 }
                 Keyword::Default => {
                     self.next_token();
                     self.next_token();
-                    _column.default = self.parse_expression(Precedence::Lowest)?
+                    column.default = self.parse_expression(Precedence::Lowest)?
                 }
                 Keyword::Unique => {
                     self.next_token();
-                    _column.unique = true
+                    column.unique = true
                 }
                 Keyword::Index => {
                     self.next_token();
-                    _column.index = true
+                    column.index = true
                 }
                 Keyword::References => {
                     self.next_token();
-                    _column.references = Some(self.next_ident()?)
+                    column.references = Some(self.next_ident()?)
                 }
                 keyword => {
                     dbg!("unexpected keyword: {}", keyword);
-                    return Err(Error::ParseErr(format!("unexpected keyword: {}", keyword)));
+                    return Err(Error::ParseErr(fmt_err!("unexpected keyword: {}", keyword)));
                 }
             }
         }
 
-        Ok(_column)
+        Ok(column)
     }
 
     fn parse_drop_stmt(&mut self) -> Result<Statement> {
@@ -368,6 +695,7 @@ impl Parser {
         let mut selects = Vec::new();
         loop {
             if self.next_if_token(Token::Asterisk) && selects.is_empty() {
+                self.next_token();
                 break;
             }
 
@@ -828,14 +1156,17 @@ impl Parser {
                     },
                 )))))
             }
-            Token::Add => Ok(Some(Expression::Operation(Operation::Assert(Box::new(
-                match self.parse_expression(Precedence::Prefix)? {
-                    Some(exp) => exp,
-                    None => {
-                        return Err(Error::ParseErr(fmt_err!("Operation::Assert exp is None")));
-                    }
-                },
-            ))))),
+            Token::Add => {
+                self.next_token();
+                Ok(Some(Expression::Operation(Operation::Assert(Box::new(
+                    match self.parse_expression(Precedence::Prefix)? {
+                        Some(exp) => exp,
+                        None => {
+                            return Err(Error::ParseErr(fmt_err!("Operation::Assert exp is None")));
+                        }
+                    },
+                )))))
+            }
             Token::Minus => {
                 self.next_token();
                 Ok(Some(Expression::Operation(Operation::Negate(Box::new(
@@ -1308,8 +1639,6 @@ pub mod test {
             ],
             table_name: "person".to_string(),
         })),
-        create_table_failed: "create table person (id int not null null);" => Err(Error::ParseErr(
-                        "Column id can't be both not nullable and nullable".to_string())),
         transaction_begin_transaction: "begin transaction;" => Ok(Statement::Begin(BeginStmt {
             is_readonly: false,
             version: None,
@@ -1669,6 +1998,108 @@ pub mod test {
             order: None,
             offset: None,
             limit: None,
+        }
+        )),
+        alter_table_test_1: r#"ALTER TABLE user ADD COLUMN password STRING DEFAULT 3 + 5;"#
+        => Ok(Statement::Alter(AlterStmt {
+            alter_type: AlterType::AddColumn(Column {
+                name: "password".to_owned(),
+                data_type: DataType::String,
+                primary_key: false,
+                nullable: None,
+                default: Some(Expression::Operation(Operation::Add(
+                    Box::new(Expression::Literal(Literal::Int(3))),
+                    Box::new(Expression::Literal(Literal::Int(5))),
+                ))),
+                unique: false,
+                index: false,
+                references: None,
+            }),
+            table_name: "user".to_owned(),
         })),
+        alter_table_test_2: r#"ALTER TABLE user ADD INDEX user_id_index (account, id);"# =>
+            Ok(Statement::Alter(AlterStmt {
+                alter_type: AlterType::AddIndex(
+                    Some("user_id_index".to_owned()),
+                    vec!["account".to_owned(), "id".to_owned()],
+                ),
+                table_name: "user".to_owned(),
+            })),
+        alter_table_test_3: r#"ALTER TABLE user DROP COLUMN password;"# =>
+            Ok(Statement::Alter(AlterStmt {
+                alter_type: AlterType::DropColumn("password".to_owned()),
+                table_name: "user".to_owned(),
+            })),
+        alter_table_test_4: r#"ALTER TABLE user DROP INDEX user_id_index;"# =>
+            Ok(Statement::Alter(AlterStmt {
+                alter_type: AlterType::RemoveIndex("user_id_index".to_owned()),
+                table_name: "user".to_owned(),
+            })),
+        alter_table_test_5: r#"ALTER TABLE user MODIFY COLUMN new_column_name INT PRIMARY KEY;"# =>
+            Ok(Statement::Alter(AlterStmt {
+                alter_type: AlterType::ModifyColumn(Column {
+                    name: "new_column_name".to_owned(),
+                    data_type: DataType::Int,
+                    primary_key: true,
+                    nullable: None,
+                    default: None,
+                    unique: false,
+                    index: false,
+                    references: None,
+                }),
+                table_name: "user".to_owned(),
+            })),
+        alter_table_test_6: r#"ALTER TABLE user RENAME TO new_table_name;"# =>
+            Ok(Statement::Alter(AlterStmt {
+                alter_type: AlterType::RenameTable("new_table_name".to_owned()),
+                table_name: "user".to_owned(),
+            })),
+        alter_table_test_7: r#"ALTER TABLE user RENAME COLUMN account TO account_2 "# =>
+            Ok(Statement::Alter(AlterStmt {
+                alter_type: AlterType::RenameColumn (
+                    "account".to_owned(),
+                    "account_2".to_owned(),
+                ),
+                table_name: "user".to_owned(),
+            })),
+        create_index_test_1: r#"CREATE INDEX xxx_name ON table_name (id, password, account);"# =>
+            Ok(Statement::CreateIndex(CreateIndexStmt {
+                is_unique: false,
+                index_name: "xxx_name".to_owned(),
+                table_name: "table_name".to_owned(),
+                columns: vec!["id".to_owned(), "password".to_owned(), "account".to_owned()],
+            })),
+        create_unique_index_test2: r#"CREATE UNIQUE INDEX index_name ON table_name (id, password);"# =>
+            Ok(Statement::CreateIndex(CreateIndexStmt {
+                is_unique: true,
+                index_name: "index_name".to_owned(),
+                table_name: "table_name".to_owned(),
+                columns: vec!["id".to_owned(), "password".to_owned()],
+            })),
+        set_transaction_test_1: r#"SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;"# =>
+            Ok(Statement::Set(SetStmt {
+                set_value: SetVariableType::Transaction(TransactionIsolationLevel::ReadUncommitted),
+                is_session: true,
+            })),
+        set_transaction_test_2: r#"SET TRANSACTION ISOLATION LEVEL READ COMMITTED;"# =>
+            Ok(Statement::Set(SetStmt {
+                set_value: SetVariableType::Transaction(TransactionIsolationLevel::ReadCommitted),
+                is_session: true,
+            })),
+        set_transaction_test_3: r#"SET GLOBAL TRANSACTION ISOLATION LEVEL REPEATABLE READ;"# =>
+            Ok(Statement::Set(SetStmt {
+                set_value: SetVariableType::Transaction(TransactionIsolationLevel::RepeatableRead),
+                is_session: false,
+            })),
+        set_transaction_test_4: r#"SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;"# =>
+            Ok(Statement::Set(SetStmt {
+                set_value: SetVariableType::Transaction(TransactionIsolationLevel::Serializable),
+                is_session: true,
+            })),
+
+        show_databases_test: r#"SHOW DATABASES;"# =>
+            Ok(Statement::ShowDatabase),
+        show_tables_test: r#"SHOW TABLES;"# =>
+            Ok(Statement::ShowTables),
     }
 }

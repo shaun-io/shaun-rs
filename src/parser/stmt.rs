@@ -14,6 +14,12 @@ pub enum Statement {
     Insert(InsertStmt),
     Update(UpdateStmt),
     Select(SelectStmt),
+    Alter(AlterStmt),
+    CreateIndex(CreateIndexStmt),
+    ShowDatabase,
+    ShowTables,
+    Set(SetStmt),
+    DescribeTable(String),
 }
 
 impl std::fmt::Display for Statement {
@@ -108,4 +114,55 @@ pub struct SelectStmt {
     pub order: Option<Vec<(Expression, OrderByType)>>,
     pub offset: Option<Expression>,
     pub limit: Option<Expression>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum AlterType {
+    AddColumn(Column),                     // 增加列
+    DropColumn(String),                    // 删除列
+    ModifyColumn(Column),                  // 修改列数据类型
+    RenameColumn(String, String),          // 重命名列名称
+    RenameTable(String),                   // 重命名表名称
+    AddIndex(Option<String>, Vec<String>), // 增加索引
+    RemoveIndex(String),                   // 删除索引
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct AlterStmt {
+    pub alter_type: AlterType,
+    pub table_name: String,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum TransactionIsolationLevel {
+    ReadUncommitted, // 读未提交
+    ReadCommitted,   // 读已提交
+    RepeatableRead,  // 可重复读
+    Serializable,    // 串行化
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum SetVariableType {
+    Transaction(TransactionIsolationLevel),
+    Value(SetValue),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct SetValue {
+    pub variable_name: String,
+    pub value: Expression,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct SetStmt {
+    pub set_value: SetVariableType,
+    pub is_session: bool,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct CreateIndexStmt {
+    pub index_name: String,
+    pub is_unique: bool, // 是否是唯一索引
+    pub table_name: String,
+    pub columns: Vec<String>,
 }
