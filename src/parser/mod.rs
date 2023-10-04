@@ -21,7 +21,6 @@ use expression::Expression;
 use expression::Literal;
 use keyword::Keyword;
 use lexer::Lexer;
-use log::debug;
 use stmt::Statement;
 use token::Token;
 
@@ -540,15 +539,48 @@ impl Parser {
                 Token::KeyWord(Keyword::Bool) => DataType::Bool,
                 Token::KeyWord(Keyword::Boolean) => DataType::Bool,
 
-                Token::KeyWord(Keyword::Float) => DataType::Float,
-                Token::KeyWord(Keyword::Double) => DataType::Float,
+                Token::KeyWord(Keyword::Float) => DataType::Float32,
+                Token::KeyWord(Keyword::Double) => DataType::Float64,
 
-                Token::KeyWord(Keyword::Int) => DataType::Int,
-                Token::KeyWord(Keyword::Integer) => DataType::Int,
+                Token::KeyWord(Keyword::Int) => DataType::Int32,
+                Token::KeyWord(Keyword::Integer) => DataType::Int32,
+                Token::KeyWord(Keyword::Int8) => DataType::Int8,
+                Token::KeyWord(Keyword::Int16) => DataType::Int16,
+                Token::KeyWord(Keyword::Int32) => DataType::Int32,
+                Token::KeyWord(Keyword::Int64) => DataType::Int64,
+                Token::KeyWord(Keyword::Uint8) => DataType::Uint8,
+                Token::KeyWord(Keyword::Uint16) => DataType::Uint16,
+                Token::KeyWord(Keyword::Uint32) => DataType::Uint32,
+                Token::KeyWord(Keyword::Uint64) => DataType::Uint64,
+                Token::KeyWord(Keyword::Float32) => DataType::Float32,
+                Token::KeyWord(Keyword::Float64) => DataType::Float64,
 
                 Token::KeyWord(Keyword::Text) => DataType::String,
-                Token::KeyWord(Keyword::VarChar) => DataType::String,
-                Token::KeyWord(Keyword::Char) => DataType::String,
+                Token::KeyWord(Keyword::VarChar) => {
+                    self.next_expected_token(Token::LeftParen)?;
+                    let token = self.next_token();
+                    let len;
+                    match token {
+                        Token::Number(n) => {
+                            len = match n.parse::<usize>() {
+                                Ok(l) => l,
+                                Err(e) => {
+                                    return Err(Error::ParseErr(fmt_err!("parse err: {}", e)));
+                                }
+                            }
+                        }
+                        t => {
+                            return Err(Error::ParseErr(fmt_err!(
+                                "unexpected token: {} expected: Number",
+                                t
+                            )));
+                        }
+                    };
+
+                    self.next_expected_token(Token::RightParen)?;
+                    DataType::Varchar(len)
+                }
+                Token::KeyWord(Keyword::Char) => DataType::Char,
                 Token::KeyWord(Keyword::String) => DataType::String,
 
                 t => {
@@ -1596,7 +1628,7 @@ pub mod test {
             columns: vec![
                 column::Column {
                     name: "id".to_string(),
-                    data_type: DataType::Int,
+                    data_type: DataType::Int32,
                     primary_key: true,
                     nullable: None,
                     default: None,
@@ -1618,7 +1650,7 @@ pub mod test {
                 },
                 column::Column {
                     name: "age".to_string(),
-                    data_type: DataType::Int,
+                    data_type: DataType::Int32,
                     primary_key: false,
                     nullable: None,
                     default: None,
@@ -1628,7 +1660,7 @@ pub mod test {
                 },
                 column::Column {
                     name: "class".to_string(),
-                    data_type: DataType::Int,
+                    data_type: DataType::Int32,
                     primary_key: false,
                     nullable: None,
                     default: None,
@@ -2039,7 +2071,7 @@ pub mod test {
             Ok(Statement::Alter(AlterStmt {
                 alter_type: AlterType::ModifyColumn(Column {
                     name: "new_column_name".to_owned(),
-                    data_type: DataType::Int,
+                    data_type: DataType::Int32,
                     primary_key: true,
                     nullable: None,
                     default: None,

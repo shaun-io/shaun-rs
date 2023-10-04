@@ -86,6 +86,16 @@ pub enum Keyword {
     Where,
     Write,
     UserIdent,
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    Uint8,
+    Uint16,
+    Uint32,
+    Uint64,
+    Float32,
+    Float64,
 }
 
 impl fmt::Display for Keyword {
@@ -178,6 +188,16 @@ impl fmt::Display for Keyword {
                 Self::Repeatable => "Repeatable",
                 Self::Uncommitted => "Uncommited",
                 Self::UserIdent => "UserIdent",
+                Self::Int8 => "Int8",
+                Self::Int16 => "Int16",
+                Self::Int32 => "Int32",
+                Self::Int64 => "Int64",
+                Self::Uint8 => "Uint8",
+                Self::Uint16 => "Uint16",
+                Self::Uint32 => "Uint32",
+                Self::Uint64 => "Uint64",
+                Self::Float32 => "Float32",
+                Self::Float64 => "Float64",
             }
         )
     }
@@ -271,6 +291,16 @@ pub fn find_keyword(keyword_str: &String) -> Keyword {
         "REPEATABLE" => Keyword::Repeatable,
         "UNCOMMITTED" => Keyword::Uncommitted,
         "SERIALIZABLE" => Keyword::Serializable,
+        "INT8" => Keyword::Int8,
+        "INT16" => Keyword::Int16,
+        "INT32" => Keyword::Int32,
+        "INT64" => Keyword::Int64,
+        "UINT8" => Keyword::Uint8,
+        "UINT16" => Keyword::Uint16,
+        "UINT32" => Keyword::Uint32,
+        "UINT64" => Keyword::Uint64,
+        "FLOAT32" => Keyword::Float32,
+        "FLOAT64" => Keyword::Float64,
         _ => Keyword::UserIdent,
     }
 }
