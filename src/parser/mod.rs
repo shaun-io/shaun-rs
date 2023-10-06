@@ -1,4 +1,5 @@
 mod column;
+
 mod data_type;
 mod expression;
 mod keyword;
@@ -9,7 +10,7 @@ mod stmt;
 pub mod token;
 
 use crate::parser::operator::{is_infix_oper, is_prefix_oper};
-use crate::parser::stmt::{AlterStmt, AlterType, CreateIndexStmt};
+use crate::parser::stmt::{AlterStmt, AlterType, CreateIndexStmt, DeleteTableStmt};
 use crate::parser::{operation::Operation, operator::match_precedence};
 
 use crate::{
@@ -21,10 +22,13 @@ use expression::Expression;
 use expression::Literal;
 use keyword::Keyword;
 use lexer::Lexer;
+use std::collections::BTreeMap;
 use stmt::Statement;
 use token::Token;
 
-use self::stmt::{SetStmt, SetVariableType, TransactionIsolationLevel};
+use self::stmt::{
+    DropTableStmt, ExplainStmt, SetStmt, SetVariableType, TransactionIsolationLevel, UpdateStmt,
+};
 use self::{
     column::Column,
     operator::Precedence,
@@ -411,11 +415,75 @@ impl Parser {
     }
 
     fn parse_delete_stmt(&mut self) -> Result<Statement> {
-        unimplemented!()
+        self.next_expected_keyword(Keyword::From)?;
+        let table_name = self.next_ident()?;
+        self.next_token();
+        Ok(Statement::Delete(DeleteTableStmt {
+            table_name,
+            r#where: self.parse_clause_where()?,
+        }))
     }
 
     fn parse_insert_stmt(&mut self) -> Result<Statement> {
-        unimplemented!()
+        self.next_expected_keyword(Keyword::Into)?;
+        let table_name = self.next_ident()?;
+        let columns = if self.peek_token == Token::LeftParen {
+            // todo: 这里应该有一个 next_if_peek 的方法处理这个情况
+            self.next_token();
+            let mut cols = Vec::new();
+            loop {
+                cols.push(self.next_ident()?);
+                match self.next_token() {
+                    Token::Comma => continue,
+                    Token::RightParen => break,
+                    t => {
+                        return Err(Error::ParseErr(fmt_err!(
+                            "excepted Comma or RightParen, get {}",
+                            t
+                        )));
+                    }
+                }
+            }
+            Some(cols)
+        } else {
+            None
+        };
+
+        self.next_expected_keyword(Keyword::Values)?;
+        let mut values = Vec::new();
+
+        loop {
+            if self.peek_token != Token::LeftParen {
+                return Err(Error::ParseErr(fmt_err!(
+                    "except token LeftParen, get {:?}",
+                    self.peek_token
+                )));
+            }
+
+            let mut exprs = Vec::new();
+            self.next_token();
+
+            loop {
+                self.next_token();
+                exprs.push(self.parse_expression(Precedence::Lowest)?);
+                match self.next_token() {
+                    Token::RightParen => break,
+                    Token::Comma => {}
+                    _ => return Err(Error::ParseErr("".to_owned())),
+                }
+            }
+
+            values.push(exprs);
+            if self.peek_token != Token::Comma {
+                break;
+            }
+        }
+
+        Ok(Statement::Insert(stmt::InsertStmt {
+            table_name,
+            columns,
+            values,
+        }))
     }
 
     fn parse_create_index_stmt(&mut self) -> Result<Statement> {
@@ -584,7 +652,6 @@ impl Parser {
                 Token::KeyWord(Keyword::String) => DataType::String,
 
                 t => {
-                    dbg!("unexpected token: {}", t);
                     return Err(Error::ParseErr(fmt_err!("unexpected token: {}", t)));
                 }
             },
@@ -636,7 +703,6 @@ impl Parser {
                     column.references = Some(self.next_ident()?)
                 }
                 keyword => {
-                    dbg!("unexpected keyword: {}", keyword);
                     return Err(Error::ParseErr(fmt_err!("unexpected keyword: {}", keyword)));
                 }
             }
@@ -646,7 +712,10 @@ impl Parser {
     }
 
     fn parse_drop_stmt(&mut self) -> Result<Statement> {
-        unimplemented!()
+        self.next_expected_keyword(Keyword::Table)?;
+        Ok(Statement::DropTable(DropTableStmt {
+            table_name: self.next_ident()?,
+        }))
     }
 
     fn parse_select_stmt(&mut self) -> Result<Statement> {
@@ -685,7 +754,6 @@ impl Parser {
                 }
             },
             offset: {
-                dbg!(&self.pre_token);
                 match &self.pre_token {
                     Token::KeyWord(Keyword::Offset) => {
                         self.next_token();
@@ -737,7 +805,6 @@ impl Parser {
             };
             // SELECT 1 + 2 AS c1; 1 + 2 是一个表达式, c1 是 alias 的一个名字
             // Keyword::As 是一个可选项
-            dbg!(&self.peek_token);
 
             let alias = match self.peek_token.clone() {
                 Token::KeyWord(Keyword::As) => {
@@ -773,7 +840,6 @@ impl Parser {
 
     fn parse_clause_from(&mut self) -> Result<Vec<FromItem>> {
         let mut froms = Vec::new();
-        dbg!(&self.pre_token);
         // select expression_list FROM
         match &self.pre_token {
             Token::KeyWord(Keyword::From) => {}
@@ -786,7 +852,6 @@ impl Parser {
             // FROM table_name as alias_table_name
             let mut item = self.parse_clause_from_table()?;
             loop {
-                dbg!(&self.pre_token, &self.peek_token, &item);
                 // SELECT t1.xxx, t2.xxx FROM t1 AS t3
                 //   LEFT JOIN t2 ON t1.xxx = t2.xxx;
                 let join_type = self.parse_clause_from_jointype()?;
@@ -798,13 +863,11 @@ impl Parser {
                 let left_exp = Box::new(item);
                 let right_exp = Box::new(self.parse_clause_from_table()?);
                 // 谓词, On 之后的条件,
-                dbg!(&self.pre_token);
                 let predicate = match join_type {
                     JoinType::Outer => None,
                     _ => {
                         self.next_expected_keyword(Keyword::On)?;
                         self.next_token();
-                        dbg!(&self.pre_token);
 
                         Some(match self.parse_expression(Precedence::Lowest)? {
                             Some(expr) => expr,
@@ -826,7 +889,6 @@ impl Parser {
             }
             froms.push(item);
 
-            dbg!(&self.peek_token);
             match &self.pre_token {
                 Token::KeyWord(k) => match k {
                     Keyword::Where
@@ -850,7 +912,6 @@ impl Parser {
     }
 
     fn parse_clause_from_table(&mut self) -> Result<FromItem> {
-        dbg!(&self.peek_token);
         let name = match self.peek_token.clone() {
             Token::Ident(ident) => {
                 self.next_token();
@@ -885,8 +946,6 @@ impl Parser {
     }
 
     fn parse_clause_from_jointype(&mut self) -> Result<Option<JoinType>> {
-        dbg!(&self.pre_token);
-
         match &self.peek_token {
             Token::KeyWord(Keyword::Outer) => {
                 self.next_token();
@@ -960,8 +1019,6 @@ impl Parser {
     fn parse_clause_group_by(&mut self) -> Result<Vec<Expression>> {
         let mut exprs = Vec::new();
 
-        dbg!(&self.peek_token);
-
         match &self.pre_token {
             Token::KeyWord(Keyword::Group) => {}
             _ => {
@@ -980,7 +1037,6 @@ impl Parser {
                 }
             });
 
-            dbg!(&self.pre_token);
             self.next_token();
             match self.peek_token {
                 Token::Comma => continue,
@@ -992,7 +1048,6 @@ impl Parser {
     }
 
     fn parse_clause_where(&mut self) -> Result<Option<Expression>> {
-        dbg!(&self.pre_token);
         match &self.pre_token {
             Token::KeyWord(Keyword::Where) => {}
             _ => {
@@ -1000,7 +1055,6 @@ impl Parser {
             }
         }
         self.next_token();
-        dbg!(&self.pre_token);
 
         return Ok(Some(match self.parse_expression(Precedence::Lowest)? {
             Some(exp) => {
@@ -1032,7 +1086,6 @@ impl Parser {
     }
 
     fn parse_clause_order(&mut self) -> Result<Vec<(Expression, OrderByType)>> {
-        dbg!(&self.peek_token);
         match &self.pre_token {
             Token::KeyWord(Keyword::Order) => {}
             _ => {
@@ -1069,10 +1122,46 @@ impl Parser {
     }
 
     fn parse_update_stmt(&mut self) -> Result<Statement> {
-        unimplemented!()
+        let table_name = self.next_ident()?;
+
+        self.next_expected_keyword(Keyword::Set)?;
+
+        let mut set = BTreeMap::new();
+
+        loop {
+            let column = self.next_ident()?;
+            self.next_expected_token(Token::Equal)?;
+            self.next_token();
+            let expr = self.parse_expression(Precedence::Lowest)?;
+            let expr = match self.parse_expression(Precedence::Lowest)? {
+                Some(e) => e,
+                None => return Err(Error::ParseErr(fmt_err!("expr can not be none"))),
+            };
+
+            if set.contains_key(&column) {
+                return Err(Error::OtherErr(fmt_err!(
+                    "Duplicate values given for column {}",
+                    column
+                )));
+            }
+            set.insert(column, expr);
+            if self.peek_token != Token::Comma {
+                self.next_token();
+                break;
+            }
+        }
+        Ok(Statement::Update(UpdateStmt {
+            table_name,
+            set,
+            wheres: self.parse_clause_where()?,
+        }))
     }
+
     fn parse_explain_stmt(&mut self) -> Result<Statement> {
-        unimplemented!()
+        self.next_token();
+        Ok(Statement::Explain(ExplainStmt {
+            statement: Box::new(self.parse_stmt()?),
+        }))
     }
 
     fn next_token(&mut self) -> &Token {
@@ -1159,11 +1248,6 @@ impl Parser {
 
         while self.pre_token != Token::Semicolon && precedence < self.peek_token_predence() {
             if !is_infix_oper(&self.peek_token) {
-                dbg!(
-                    "No infixOperatorFunc for {} lhs: {:?}",
-                    &self.pre_token,
-                    &lhs
-                );
                 return Ok(Some(lhs));
             }
             self.next_token();
@@ -1234,9 +1318,7 @@ impl Parser {
             }
             Token::LeftParen => {
                 self.next_token();
-                dbg!(&self.pre_token, &self.peek_token);
                 let exp = self.parse_expression(Precedence::Lowest);
-                dbg!(&self.peek_token);
                 if !self.peek_if_token(Token::RightParen) {
                     return Ok(None);
                 }
@@ -1390,7 +1472,6 @@ impl Parser {
             Token::NotEqual => {
                 let precedence = match_precedence(self.pre_token.clone());
                 self.next_token();
-                dbg!(&self.pre_token);
 
                 Ok(Expression::Operation(Operation::NotEqual(
                     Box::new(exp),
@@ -1494,7 +1575,6 @@ impl Parser {
                 match exp {
                     Expression::Literal(Literal::String(s)) => s,
                     _ => {
-                        dbg!(&exp);
                         return Err(Error::ParseErr(fmt_err!(
                             "Operation::LeftParen exp is not Literal::String"
                         )));
@@ -1624,6 +1704,66 @@ pub mod test {
     }
 
     test_parser! {
+        explain_base_sql: "explain drop table person" => Ok(Statement::Explain(ExplainStmt {
+            statement: Box::new(Statement::DropTable(DropTableStmt {
+                table_name: "person".to_owned(),
+            })),
+        })),
+        update_table_base: "update person set name = 'tangruilin' where id = 1;" => Ok(Statement::Update(UpdateStmt {
+            table_name: "person".to_owned(),
+            set: BTreeMap::from([(
+                "name".to_owned(),
+                Expression::Literal(Literal::String(
+                    "tangruilin".to_owned(),
+                )),
+            )]),
+            wheres: Some(Expression::Operation(Operation::Equal(
+                Box::new(Expression::Field(None, "id".to_owned())),
+                Box::new(Expression::Literal(Literal::Int(1))),
+            ))),
+        })),
+        drop_table_base: "drop table person;" => Ok(Statement::DropTable(DropTableStmt {
+            table_name: "person".to_owned(),
+        })),
+        delete_table_base: "delete from person where id = 1;" => Ok(Statement::Delete(DeleteTableStmt {
+            table_name: "person".to_owned(),
+            r#where: Some(Expression::Operation(Operation::Equal(
+                Box::new(Expression::Field(None, "id".to_owned())),
+                Box::new(Expression::Literal(Literal::Int(1))),
+            ))),
+        })),
+        delete_table_without_where: "delete from person;" => Ok(Statement::Delete(DeleteTableStmt {
+            table_name: "person".to_owned(),
+            r#where: None,
+        })),
+        insert_table_base: "insert into person (id, name, age) values (1, 'tangruilin', 14)" => Ok(Statement::Insert(InsertStmt {
+                table_name: "person".to_owned(),
+                columns: Some(["id".to_owned(), "name".to_owned(), "age".to_owned()].to_vec()),
+                values: [[
+                    Some(Expression::Literal(Literal::Int(1))),
+                    Some(Expression::Literal(Literal::String(
+                        "tangruilin".to_owned()
+                    ))),
+                    Some(Expression::Literal(Literal::Int(14))),
+                ]
+                .to_vec()]
+                .to_vec(),
+            })),
+
+        insert_without_column_name: "insert into person values (1, 'tangruilin', 14)" => Ok(Statement::Insert(InsertStmt {
+                table_name: "person".to_owned(),
+                columns: None,
+                values: [[
+                    Some(Expression::Literal(Literal::Int(1))),
+                    Some(Expression::Literal(Literal::String(
+                        "tangruilin".to_owned()
+                    ))),
+                    Some(Expression::Literal(Literal::Int(14))),
+                ]
+                .to_vec()]
+                .to_vec(),
+            })),
+
         create_table_success: "create table person (id int primary key, name string not null default 'tangruilin', age int unique, class int index references country);" => Ok(Statement::CreateTable(stmt::CreateTableStmt {
             columns: vec![
                 column::Column {

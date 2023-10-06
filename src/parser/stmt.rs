@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::parser::column::Column;
 
 use super::expression::Expression;
@@ -58,21 +60,36 @@ impl std::fmt::Display for BeginStmt {
     }
 }
 
-#[derive(Eq, PartialEq, Debug)]
-pub struct ExplainStmt {}
+#[derive(PartialEq, Debug)]
+pub struct ExplainStmt {
+    pub statement: Box<Statement>,
+}
 #[derive(PartialEq, Debug)]
 pub struct CreateTableStmt {
     pub columns: Vec<Column>,
     pub table_name: String,
 }
 #[derive(Eq, PartialEq, Debug)]
-pub struct DropTableStmt {}
-#[derive(Eq, PartialEq, Debug)]
-pub struct DeleteTableStmt {}
-#[derive(Eq, PartialEq, Debug)]
-pub struct InsertStmt {}
-#[derive(Eq, PartialEq, Debug)]
-pub struct UpdateStmt {}
+pub struct DropTableStmt {
+    pub table_name: String,
+}
+#[derive(PartialEq, Debug)]
+pub struct DeleteTableStmt {
+    pub table_name: String,
+    pub r#where: Option<Expression>,
+}
+#[derive(PartialEq, Debug)]
+pub struct InsertStmt {
+    pub table_name: String,
+    pub columns: Option<Vec<String>>,
+    pub values: Vec<Vec<Option<Expression>>>,
+}
+#[derive(PartialEq, Debug)]
+pub struct UpdateStmt {
+    pub table_name: String,
+    pub set: BTreeMap<String, Expression>,
+    pub wheres: Option<Expression>,
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum FromItem {
