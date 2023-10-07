@@ -51,7 +51,7 @@ pub fn is_infix_oper(t: &token::Token) -> bool {
     }
 }
 
-pub fn match_precedence(t: Token) -> Precedence {
+pub fn match_precedence(t: &Token) -> Precedence {
     match t {
         Token::Equal | Token::NotEqual => Precedence::Equals,
         Token::LessThan

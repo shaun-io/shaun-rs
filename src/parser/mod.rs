@@ -1364,7 +1364,7 @@ impl Parser {
     fn parse_infix_expr(&mut self, exp: Expression) -> Result<Expression> {
         match self.pre_token {
             Token::Add => {
-                let precedence = match_precedence(self.pre_token.clone());
+                let precedence = match_precedence(&self.pre_token);
                 self.next_token();
                 Ok(Expression::Operation(Operation::Add(
                     Box::new(exp),
@@ -1377,7 +1377,7 @@ impl Parser {
                 )))
             }
             Token::Equal => {
-                let precedence = match_precedence(self.pre_token.clone());
+                let precedence = match_precedence(&self.pre_token);
                 self.next_token();
 
                 Ok(Expression::Operation(Operation::Equal(
@@ -1391,7 +1391,7 @@ impl Parser {
                 )))
             }
             Token::GreaterThan => {
-                let precedence = match_precedence(self.pre_token.clone());
+                let precedence = match_precedence(&self.pre_token);
                 self.next_token();
 
                 Ok(Expression::Operation(Operation::GreaterThan(
@@ -1407,7 +1407,7 @@ impl Parser {
                 )))
             }
             Token::GreaterThanOrEqual => {
-                let precedence = match_precedence(self.pre_token.clone());
+                let precedence = match_precedence(&self.pre_token);
                 self.next_token();
 
                 Ok(Expression::Operation(Operation::GreaterThanOrEqual(
@@ -1423,7 +1423,7 @@ impl Parser {
                 )))
             }
             Token::LessThan => {
-                let precedence = match_precedence(self.pre_token.clone());
+                let precedence = match_precedence(&self.pre_token);
                 self.next_token();
 
                 Ok(Expression::Operation(Operation::LessThan(
@@ -1439,7 +1439,7 @@ impl Parser {
                 )))
             }
             Token::LessThanOrEqual => {
-                let precedence = match_precedence(self.pre_token.clone());
+                let precedence = match_precedence(&self.pre_token);
                 self.next_token();
 
                 Ok(Expression::Operation(Operation::LessThanOrEqual(
@@ -1455,7 +1455,7 @@ impl Parser {
                 )))
             }
             Token::Minus => {
-                let precedence = match_precedence(self.pre_token.clone());
+                let precedence = match_precedence(&self.pre_token);
                 self.next_token();
 
                 Ok(Expression::Operation(Operation::Subtract(
@@ -1469,7 +1469,7 @@ impl Parser {
                 )))
             }
             Token::NotEqual => {
-                let precedence = match_precedence(self.pre_token.clone());
+                let precedence = match_precedence(&self.pre_token);
                 self.next_token();
 
                 Ok(Expression::Operation(Operation::NotEqual(
@@ -1485,7 +1485,7 @@ impl Parser {
                 )))
             }
             Token::KeyWord(Keyword::And) => {
-                let precedence = match_precedence(self.pre_token.clone());
+                let precedence = match_precedence(&self.pre_token);
                 self.next_token();
 
                 Ok(Expression::Operation(Operation::And(
@@ -1499,7 +1499,7 @@ impl Parser {
                 )))
             }
             Token::KeyWord(Keyword::Or) => {
-                let precedence = match_precedence(self.pre_token.clone());
+                let precedence = match_precedence(&self.pre_token);
                 self.next_token();
 
                 Ok(Expression::Operation(Operation::Or(
@@ -1513,7 +1513,7 @@ impl Parser {
                 )))
             }
             Token::KeyWord(Keyword::Like) => {
-                let precedence = match_precedence(self.pre_token.clone());
+                let precedence = match_precedence(&self.pre_token);
                 self.next_token();
 
                 Ok(Expression::Operation(Operation::Like(
@@ -1527,7 +1527,7 @@ impl Parser {
                 )))
             }
             Token::Percent => {
-                let precedence = match_precedence(self.pre_token.clone());
+                let precedence = match_precedence(&self.pre_token);
                 self.next_token();
                 Ok(Expression::Operation(Operation::Modulo(
                     Box::new(exp),
@@ -1542,7 +1542,7 @@ impl Parser {
                 )))
             }
             Token::Asterisk => {
-                let precedence = match_precedence(self.pre_token.clone());
+                let precedence = match_precedence(&self.pre_token);
                 self.next_token();
                 Ok(Expression::Operation(Operation::Multiply(
                     Box::new(exp),
@@ -1557,7 +1557,7 @@ impl Parser {
                 )))
             }
             Token::Slash => {
-                let precedence = match_precedence(self.pre_token.clone());
+                let precedence = match_precedence(&self.pre_token);
                 self.next_token();
                 Ok(Expression::Operation(Operation::Divide(
                     Box::new(exp),
@@ -1594,6 +1594,11 @@ impl Parser {
                                 )));
                             }
                         }
+                    }
+                    Token::RightParen => {
+                        // empty function args, like SUM(), NOW()
+                        self.next_token();
+                        vec![]
                     }
                     _ => match self.parse_expression_list()? {
                         Some(exprs) => exprs,
@@ -1651,8 +1656,8 @@ impl Parser {
         Ok(Some(exprs))
     }
 
-    fn peek_token_predence(&mut self) -> Precedence {
-        operator::match_precedence(self.peek_token.clone())
+    fn peek_token_predence(&self) -> Precedence {
+        operator::match_precedence(&self.peek_token)
     }
 }
 
