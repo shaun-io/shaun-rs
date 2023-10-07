@@ -1132,7 +1132,6 @@ impl Parser {
             let column = self.next_ident()?;
             self.next_expected_token(Token::Equal)?;
             self.next_token();
-            let expr = self.parse_expression(Precedence::Lowest)?;
             let expr = match self.parse_expression(Precedence::Lowest)? {
                 Some(e) => e,
                 None => return Err(Error::ParseErr(fmt_err!("expr can not be none"))),
