@@ -409,11 +409,6 @@ impl Parser {
         }
     }
 
-    #[allow(dead_code)]
-    fn parse_ddl_stmt(&mut self) -> Result<Statement> {
-        unimplemented!()
-    }
-
     fn parse_delete_stmt(&mut self) -> Result<Statement> {
         self.next_expected_keyword(Keyword::From)?;
         let table_name = self.next_ident()?;
