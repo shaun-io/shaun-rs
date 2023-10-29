@@ -114,9 +114,7 @@ impl Parser {
 
                         is_session,
                     })),
-                    t => {
-                        Err(Error::Parse(fmt_err!("unexpected token: {}", t)))
-                    }
+                    t => Err(Error::Parse(fmt_err!("unexpected token: {}", t))),
                 }
             }
             Token::KeyWord(Keyword::Global) => {
@@ -128,9 +126,7 @@ impl Parser {
                         set_value: self.parse_set_transaction()?,
                         is_session,
                     })),
-                    t => {
-                        Err(Error::Parse(fmt_err!("unexpected token: {}", t)))
-                    }
+                    t => Err(Error::Parse(fmt_err!("unexpected token: {}", t))),
                 }
             }
             Token::KeyWord(Keyword::Transaction) => Ok(Statement::Set(SetStmt {
