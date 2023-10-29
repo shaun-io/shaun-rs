@@ -13,42 +13,43 @@ pub enum Precedence {
     Call,        // function(x)
 }
 
+#[warn(clippy::match_like_matches_macro)]
 pub fn is_prefix_oper(t: &token::Token) -> bool {
-    match t {
+    matches!(
+        t,
         Token::Exclamation
-        | Token::Minus
-        | Token::Add
-        | Token::LeftParen
-        | Token::Number(_)
-        | Token::Ident(_)
-        | Token::KeyWord(Keyword::True)
-        | Token::KeyWord(Keyword::False)
-        | Token::String(_)
-        | Token::KeyWord(Keyword::Null) => true,
-        _ => false,
-    }
+            | Token::Minus
+            | Token::Add
+            | Token::LeftParen
+            | Token::Number(_)
+            | Token::Ident(_)
+            | Token::KeyWord(Keyword::True)
+            | Token::KeyWord(Keyword::False)
+            | Token::String(_)
+            | Token::KeyWord(Keyword::Null)
+    )
 }
 
 pub fn is_infix_oper(t: &token::Token) -> bool {
-    match t {
+    matches!(
+        t,
         Token::Add
-        | Token::Equal
-        | Token::GreaterThan
-        | Token::GreaterThanOrEqual
-        | Token::LessThan
-        | Token::LessThanOrEqual
-        | Token::Minus
-        | Token::NotEqual
-        | Token::Percent
-        | Token::Slash
-        | Token::Asterisk
-        | Token::Caret
-        | Token::KeyWord(Keyword::And)
-        | Token::KeyWord(Keyword::Like)
-        | Token::KeyWord(Keyword::Or)
-        | Token::LeftParen => true,
-        _ => false,
-    }
+            | Token::Equal
+            | Token::GreaterThan
+            | Token::GreaterThanOrEqual
+            | Token::LessThan
+            | Token::LessThanOrEqual
+            | Token::Minus
+            | Token::NotEqual
+            | Token::Percent
+            | Token::Slash
+            | Token::Asterisk
+            | Token::Caret
+            | Token::KeyWord(Keyword::And)
+            | Token::KeyWord(Keyword::Like)
+            | Token::KeyWord(Keyword::Or)
+            | Token::LeftParen
+    )
 }
 
 pub fn match_precedence(t: &Token) -> Precedence {

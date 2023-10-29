@@ -203,7 +203,7 @@ impl fmt::Display for Keyword {
     }
 }
 
-pub fn find_keyword(keyword_str: &String) -> Keyword {
+pub fn find_keyword(keyword_str: &str) -> Keyword {
     // 转化为大写
     let upper_keyword_str = keyword_str.to_uppercase();
 

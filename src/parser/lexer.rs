@@ -180,12 +180,12 @@ impl Lexer {
 
 // 是否是 字母开头
 fn is_letter(ch: char) -> bool {
-    (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_'
+    ch.is_ascii_alphabetic() || ch == '_'
 }
 
 // 是否是 数字
 fn is_digit(ch: char) -> bool {
-    ch >= '0' && ch <= '9'
+    ch.is_numeric()
 }
 
 #[cfg(test)]
