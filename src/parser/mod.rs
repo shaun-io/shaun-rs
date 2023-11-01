@@ -67,10 +67,10 @@ impl Parser {
     pub fn parse_stmt(&mut self) -> Result<Statement> {
         // 直接与 lexer 产生的第一个 Token 作比较
         if self.pre_token == Token::Eof {
-            return Err(Error::ParseErr(fmt_err!("empty token {}", self.pre_token)));
+            return Err(Error::Parse(fmt_err!("empty token {}", self.pre_token)));
         }
 
-        let result = match &self.pre_token {
+        match &self.pre_token {
             Token::KeyWord(Keyword::Begin)
             | Token::KeyWord(Keyword::Commit)
             | Token::KeyWord(Keyword::Rollback) => self.parse_transaction_stmt(),
@@ -89,17 +89,15 @@ impl Parser {
             Token::KeyWord(Keyword::Explain) => self.parse_explain_stmt(),
             Token::KeyWord(Keyword::Describe) => match &self.peek_token {
                 Token::Ident(i) => Ok(Statement::DescribeTable(i.to_owned())),
-                _ => Err(Error::ParseErr(fmt_err!(
+                _ => Err(Error::Parse(fmt_err!(
                     "unexpected token: {}",
                     &self.peek_token
                 ))),
             },
             Token::KeyWord(Keyword::Set) => self.parse_set_stmt(),
 
-            t => Err(Error::ParseErr(fmt_err!("unexpected token: {}", t))),
-        };
-
-        result
+            t => Err(Error::Parse(fmt_err!("unexpected token: {}", t))),
+        }
     }
 
     fn parse_set_stmt(&mut self) -> Result<Statement> {
@@ -107,9 +105,7 @@ impl Parser {
         match &self.peek_token {
             Token::KeyWord(Keyword::Session) => {
                 if !is_session {
-                    return Err(Error::ParseErr(fmt_err!(
-                        "SET SESSION GLOBAL is not valid!"
-                    )));
+                    return Err(Error::Parse(fmt_err!("SET SESSION GLOBAL is not valid!")));
                 }
                 self.next_token();
                 match self.peek_token.clone() {
@@ -118,9 +114,7 @@ impl Parser {
 
                         is_session,
                     })),
-                    t => {
-                        return Err(Error::ParseErr(fmt_err!("unexpected token: {}", t)));
-                    }
+                    t => Err(Error::Parse(fmt_err!("unexpected token: {}", t))),
                 }
             }
             Token::KeyWord(Keyword::Global) => {
@@ -132,9 +126,7 @@ impl Parser {
                         set_value: self.parse_set_transaction()?,
                         is_session,
                     })),
-                    t => {
-                        return Err(Error::ParseErr(fmt_err!("unexpected token: {}", t)));
-                    }
+                    t => Err(Error::Parse(fmt_err!("unexpected token: {}", t))),
                 }
             }
             Token::KeyWord(Keyword::Transaction) => Ok(Statement::Set(SetStmt {
@@ -143,7 +135,7 @@ impl Parser {
             })),
             t => {
                 // TODO: 需要支持 SET @var_name = expression;
-                return Err(Error::ParseErr(fmt_err!("unexpected token: {}", t)));
+                Err(Error::Parse(fmt_err!("unexpected token: {}", t)))
             }
         }
     }
@@ -165,7 +157,7 @@ impl Parser {
                         TransactionIsolationLevel::ReadUncommitted,
                     )),
 
-                    t => Err(Error::ParseErr(fmt_err!("unexpected token: {}", t))),
+                    t => Err(Error::Parse(fmt_err!("unexpected token: {}", t))),
                 }
             }
             Token::KeyWord(Keyword::Repeatable) => {
@@ -175,13 +167,13 @@ impl Parser {
                         TransactionIsolationLevel::RepeatableRead,
                     )),
 
-                    t => Err(Error::ParseErr(fmt_err!("unexpected token: {}", t))),
+                    t => Err(Error::Parse(fmt_err!("unexpected token: {}", t))),
                 }
             }
             Token::KeyWord(Keyword::Serializable) => Ok(SetVariableType::Transaction(
                 TransactionIsolationLevel::Serializable,
             )),
-            t => Err(Error::ParseErr(fmt_err!("unexpected token: {}", t))),
+            t => Err(Error::Parse(fmt_err!("unexpected token: {}", t))),
         }
     }
 
@@ -189,7 +181,7 @@ impl Parser {
         match &self.peek_token {
             Token::KeyWord(Keyword::Tables) => Ok(Statement::ShowTables),
             Token::KeyWord(Keyword::Databases) => Ok(Statement::ShowDatabase),
-            _ => Err(Error::ParseErr(fmt_err!(
+            _ => Err(Error::Parse(fmt_err!(
                 "unexpected token: {}",
                 &self.peek_token
             ))),
@@ -257,7 +249,7 @@ impl Parser {
                                         break;
                                     }
                                     _ => {
-                                        return Err(Error::ParseErr(fmt_err!(
+                                        return Err(Error::Parse(fmt_err!(
                                             "expected Token::LeftParen, but get: {}",
                                             &self.peek_token
                                         )));
@@ -270,13 +262,13 @@ impl Parser {
                                 table_name,
                             }))
                         }
-                        _ => Err(Error::ParseErr(fmt_err!(
+                        _ => Err(Error::Parse(fmt_err!(
                             "expected Token::LeftParen, but get: {}",
                             &self.peek_token
                         ))),
                     }
                 }
-                _ => Err(Error::ParseErr(fmt_err!(
+                _ => Err(Error::Parse(fmt_err!(
                     "unexpected token: {}",
                     &self.peek_token
                 ))),
@@ -304,7 +296,7 @@ impl Parser {
                             table_name,
                         }))
                     }
-                    _ => Err(Error::ParseErr(fmt_err!(
+                    _ => Err(Error::Parse(fmt_err!(
                         "unexpected token: {}",
                         &self.peek_token
                     ))),
@@ -335,7 +327,7 @@ impl Parser {
                             table_name,
                         }))
                     }
-                    _ => Err(Error::ParseErr(fmt_err!(
+                    _ => Err(Error::Parse(fmt_err!(
                         "unexpected token: {}",
                         &self.peek_token
                     ))),
@@ -351,7 +343,7 @@ impl Parser {
                     table_name,
                 }))
             }
-            _ => Err(Error::ParseErr(fmt_err!(
+            _ => Err(Error::Parse(fmt_err!(
                 "ALTER TABLE is not valid unexpected token: {}",
                 &self.pre_token
             ))),
@@ -373,7 +365,7 @@ impl Parser {
                         Token::KeyWord(Keyword::Only) => is_readonly = true,
                         Token::KeyWord(Keyword::Write) => is_readonly = false,
 
-                        t => return Err(Error::ParseErr(fmt_err!("unexpected token: {}", t))),
+                        t => return Err(Error::Parse(fmt_err!("unexpected token: {}", t))),
                     }
                 }
 
@@ -385,7 +377,7 @@ impl Parser {
                     match self.next_token() {
                         Token::Number(n) => version = n.parse::<u64>().ok(),
                         t => {
-                            return Err(Error::ParseErr(fmt_err!(
+                            return Err(Error::Parse(fmt_err!(
                                 "unexpected token: {} expected: Number",
                                 t
                             )));
@@ -394,8 +386,8 @@ impl Parser {
                 }
 
                 Ok(Statement::Begin(stmt::BeginStmt {
-                    is_readonly: is_readonly,
-                    version: version,
+                    is_readonly,
+                    version,
                 }))
             }
             Token::KeyWord(Keyword::Commit) => {
@@ -407,7 +399,7 @@ impl Parser {
                 Ok(Statement::Rollback)
             }
 
-            t => Err(Error::ParseErr(fmt_err!("unexpected token: {}", t))),
+            t => Err(Error::Parse(fmt_err!("unexpected token: {}", t))),
         }
     }
 
@@ -434,7 +426,7 @@ impl Parser {
                     Token::Comma => continue,
                     Token::RightParen => break,
                     t => {
-                        return Err(Error::ParseErr(fmt_err!(
+                        return Err(Error::Parse(fmt_err!(
                             "excepted Comma or RightParen, get {}",
                             t
                         )));
@@ -451,7 +443,7 @@ impl Parser {
 
         loop {
             if self.peek_token != Token::LeftParen {
-                return Err(Error::ParseErr(fmt_err!(
+                return Err(Error::Parse(fmt_err!(
                     "except token LeftParen, get {:?}",
                     self.peek_token
                 )));
@@ -466,7 +458,7 @@ impl Parser {
                 match self.next_token() {
                     Token::RightParen => break,
                     Token::Comma => {}
-                    _ => return Err(Error::ParseErr("".to_owned())),
+                    _ => return Err(Error::Parse("".to_owned())),
                 }
             }
 
@@ -492,7 +484,7 @@ impl Parser {
                 match self.peek_token.clone() {
                     Token::KeyWord(Keyword::Index) => true,
                     _ => {
-                        return Err(Error::ParseErr(fmt_err!(
+                        return Err(Error::Parse(fmt_err!(
                             "unexpected token: {}",
                             self.peek_token
                         )));
@@ -508,7 +500,7 @@ impl Parser {
         match self.peek_token {
             Token::LeftParen => {}
             _ => {
-                return Err(Error::ParseErr(fmt_err!(
+                return Err(Error::Parse(fmt_err!(
                     "unexpected token: {}",
                     self.peek_token
                 )));
@@ -524,7 +516,7 @@ impl Parser {
                 Token::Comma => continue,
                 Token::RightParen => break,
                 _ => {
-                    return Err(Error::ParseErr(fmt_err!(
+                    return Err(Error::Parse(fmt_err!(
                         "unexpected token {:?}, want Comma or RightParen",
                         token
                     )));
@@ -546,7 +538,7 @@ impl Parser {
             Token::KeyWord(Keyword::Unique) | Token::KeyWord(Keyword::Index) => {
                 self.parse_create_index_stmt()
             }
-            _ => Err(Error::ParseErr(fmt_err!(
+            _ => Err(Error::Parse(fmt_err!(
                 "unexpected token: {}",
                 self.peek_token
             ))),
@@ -559,15 +551,12 @@ impl Parser {
         //  xxx, xxx);;
         self.next_expected_keyword(Keyword::Table)?;
         let name = self.next_ident();
-        let table_name;
-        match name {
-            Ok(n) => {
-                table_name = n;
-            }
+        let table_name = match name {
+            Ok(n) => n,
             Err(e) => {
                 return Err(e);
             }
-        }
+        };
         self.next_expected_token(Token::LeftParen)?;
 
         let mut columns = Vec::new();
@@ -579,7 +568,7 @@ impl Parser {
                 Token::Comma => continue,
                 Token::RightParen => break,
                 _ => {
-                    return Err(Error::ParseErr(fmt_err!(
+                    return Err(Error::Parse(fmt_err!(
                         "unexpected token {:?}, want Comma or RightParen",
                         token
                     )));
@@ -624,18 +613,15 @@ impl Parser {
                 Token::KeyWord(Keyword::VarChar) => {
                     self.next_expected_token(Token::LeftParen)?;
                     let token = self.next_token();
-                    let len;
-                    match token {
-                        Token::Number(n) => {
-                            len = match n.parse::<usize>() {
-                                Ok(l) => l,
-                                Err(e) => {
-                                    return Err(Error::ParseErr(fmt_err!("parse err: {}", e)));
-                                }
+                    let len = match token {
+                        Token::Number(n) => match n.parse::<usize>() {
+                            Ok(l) => l,
+                            Err(e) => {
+                                return Err(Error::Parse(fmt_err!("parse err: {}", e)));
                             }
-                        }
+                        },
                         t => {
-                            return Err(Error::ParseErr(fmt_err!(
+                            return Err(Error::Parse(fmt_err!(
                                 "unexpected token: {} expected: Number",
                                 t
                             )));
@@ -649,7 +635,7 @@ impl Parser {
                 Token::KeyWord(Keyword::String) => DataType::String,
 
                 t => {
-                    return Err(Error::ParseErr(fmt_err!("unexpected token: {}", t)));
+                    return Err(Error::Parse(fmt_err!("unexpected token: {}", t)));
                 }
             },
             primary_key: false,
@@ -670,7 +656,7 @@ impl Parser {
                 Keyword::Null => {
                     self.next_token();
                     if let Some(false) = column.nullable {
-                        return Err(Error::ParseErr(fmt_err!(
+                        return Err(Error::Parse(fmt_err!(
                             "Column {} can't be both not nullable and nullable",
                             column.name
                         )));
@@ -700,7 +686,7 @@ impl Parser {
                     column.references = Some(self.next_ident()?)
                 }
                 keyword => {
-                    return Err(Error::ParseErr(fmt_err!("unexpected keyword: {}", keyword)));
+                    return Err(Error::Parse(fmt_err!("unexpected keyword: {}", keyword)));
                 }
             }
         }
@@ -755,9 +741,8 @@ impl Parser {
                     Token::KeyWord(Keyword::Offset) => {
                         self.next_token();
                         Some(
-                            self.parse_expression(Precedence::Lowest).map_err(|_| {
-                                Error::ParseErr(fmt_err!("OFFSET exp is not valid!"))
-                            })?,
+                            self.parse_expression(Precedence::Lowest)
+                                .map_err(|_| Error::Parse(fmt_err!("OFFSET exp is not valid!")))?,
                         )
                     }
                     _ => None,
@@ -769,9 +754,8 @@ impl Parser {
                         self.next_token();
                         self.next_token();
                         Some(
-                            self.parse_expression(Precedence::Lowest).map_err(|_| {
-                                Error::ParseErr(fmt_err!("LIMIT exp is not valid!"))
-                            })?,
+                            self.parse_expression(Precedence::Lowest)
+                                .map_err(|_| Error::Parse(fmt_err!("LIMIT exp is not valid!")))?,
                         )
                     }
                     _ => None,
@@ -792,7 +776,7 @@ impl Parser {
 
             let expr = self
                 .parse_expression(Precedence::Lowest)
-                .map_err(|_| Error::ParseErr(fmt_err!("SELECT expression is not valid!")))?;
+                .map_err(|_| Error::Parse(fmt_err!("SELECT expression is not valid!")))?;
 
             // SELECT 1 + 2 AS c1; 1 + 2 是一个表达式, c1 是 alias 的一个名字
             // Keyword::As 是一个可选项
@@ -806,7 +790,7 @@ impl Parser {
                             Some(ident)
                         }
                         _ => {
-                            return Err(Error::ParseErr(fmt_err!("AS is not valid!")));
+                            return Err(Error::Parse(fmt_err!("AS is not valid!")));
                         }
                     }
                 }
@@ -861,7 +845,7 @@ impl Parser {
                         self.next_token();
 
                         Some(self.parse_expression(Precedence::Lowest).map_err(|_| {
-                            Error::ParseErr(fmt_err!("ON Predicate expression is not valid!"))
+                            Error::Parse(fmt_err!("ON Predicate expression is not valid!"))
                         })?)
                     }
                 };
@@ -904,7 +888,7 @@ impl Parser {
                 ident
             }
             _ => {
-                return Err(Error::ParseErr(fmt_err!("FROM table_name is not valid!")));
+                return Err(Error::Parse(fmt_err!("FROM table_name is not valid!")));
             }
         };
 
@@ -917,7 +901,7 @@ impl Parser {
                         Some(ident)
                     }
                     _ => {
-                        return Err(Error::ParseErr(fmt_err!("FROM AS is not valid!")));
+                        return Err(Error::Parse(fmt_err!("FROM AS is not valid!")));
                     }
                 }
             }
@@ -938,7 +922,8 @@ impl Parser {
                 match self.peek_token.clone() {
                     Token::KeyWord(Keyword::Join) => {
                         self.next_token();
-                        return Ok(Some(JoinType::Outer));
+
+                        Ok(Some(JoinType::Outer))
                     }
                     _ => Ok(None),
                 }
@@ -948,7 +933,8 @@ impl Parser {
                 match self.peek_token.clone() {
                     Token::KeyWord(Keyword::Join) => {
                         self.next_token();
-                        return Ok(Some(JoinType::Inner));
+
+                        Ok(Some(JoinType::Inner))
                     }
                     _ => Ok(None),
                 }
@@ -961,7 +947,8 @@ impl Parser {
                         match self.peek_token.clone() {
                             Token::KeyWord(Keyword::Join) => {
                                 self.next_token();
-                                return Ok(Some(JoinType::Left));
+
+                                Ok(Some(JoinType::Left))
                             }
                             _ => Ok(None),
                         }
@@ -981,7 +968,8 @@ impl Parser {
                         match self.peek_token.clone() {
                             Token::KeyWord(Keyword::Join) => {
                                 self.next_token();
-                                return Ok(Some(JoinType::Right));
+
+                                Ok(Some(JoinType::Right))
                             }
                             _ => Ok(None),
                         }
@@ -1018,7 +1006,7 @@ impl Parser {
         loop {
             exprs.push(
                 self.parse_expression(Precedence::Lowest)
-                    .map_err(|_| Error::ParseErr(fmt_err!("GROUP BY exp is not valid!")))?,
+                    .map_err(|_| Error::Parse(fmt_err!("GROUP BY exp is not valid!")))?,
             );
 
             self.next_token();
@@ -1043,7 +1031,7 @@ impl Parser {
         return Ok(Some({
             let exp = self
                 .parse_expression(Precedence::Lowest)
-                .map_err(|_| Error::ParseErr(fmt_err!("WHERE exp is not valid!")))?;
+                .map_err(|_| Error::Parse(fmt_err!("WHERE exp is not valid!")))?;
             self.next_token();
             exp
         }));
@@ -1056,7 +1044,7 @@ impl Parser {
                 Ok(Some({
                     let exp = self
                         .parse_expression(Precedence::Lowest)
-                        .map_err(|_| Error::ParseErr(fmt_err!("HAVING exp is not valid!")))?;
+                        .map_err(|_| Error::Parse(fmt_err!("HAVING exp is not valid!")))?;
 
                     self.next_token();
                     exp
@@ -1082,7 +1070,7 @@ impl Parser {
                 {
                     let exp = self
                         .parse_expression(Precedence::Lowest)
-                        .map_err(|_| Error::ParseErr(fmt_err!("ORDER BY exp is not valid!")))?;
+                        .map_err(|_| Error::Parse(fmt_err!("ORDER BY exp is not valid!")))?;
                     self.next_token();
                     exp
                 },
@@ -1113,10 +1101,10 @@ impl Parser {
             self.next_token();
             let expr = self
                 .parse_expression(Precedence::Lowest)
-                .map_err(|_| Error::ParseErr(fmt_err!("expr is not valid!")))?;
+                .map_err(|_| Error::Parse(fmt_err!("expr is not valid!")))?;
 
             if set.contains_key(&column) {
-                return Err(Error::OtherErr(fmt_err!(
+                return Err(Error::Parse(fmt_err!(
                     "Duplicate values given for column {}",
                     column
                 )));
@@ -1148,7 +1136,6 @@ impl Parser {
         &self.pre_token
     }
 
-    #[deprecated(since = "0.0.1", note = "这个函数语义不正确, 弃用")]
     fn next_if_token(&mut self, t: Token) -> bool {
         *self.next_token() == t
     }
@@ -1162,7 +1149,6 @@ impl Parser {
         false
     }
 
-    #[deprecated(since = "0.0.1", note = "这个函数语义不正确, 弃用")]
     fn next_if_keyword(&mut self, k: Keyword) -> bool {
         *self.next_token() == Token::KeyWord(k)
     }
@@ -1173,7 +1159,7 @@ impl Parser {
         if *t == Token::KeyWord(k) {
             Ok(())
         } else {
-            Err(Error::ParseErr(fmt_err!(
+            Err(Error::Parse(fmt_err!(
                 "unexpected keyword: {} want: {}",
                 t,
                 k
@@ -1187,7 +1173,7 @@ impl Parser {
         if *token == t {
             Ok(())
         } else {
-            Err(Error::ParseErr(fmt_err!(
+            Err(Error::Parse(fmt_err!(
                 "unexpected token: {} want: {}",
                 token,
                 t
@@ -1198,7 +1184,7 @@ impl Parser {
     fn next_ident(&mut self) -> Result<String> {
         match self.next_token() {
             Token::Ident(ident) => Ok(ident.clone()),
-            t => Err(Error::ParseErr(fmt_err!(
+            t => Err(Error::Parse(fmt_err!(
                 "expected: Token::Ident but get: {}",
                 t
             ))),
@@ -1208,7 +1194,7 @@ impl Parser {
     // (1 + 2)
     fn parse_expression(&mut self, precedence: Precedence) -> Result<Expression> {
         if !is_prefix_oper(&self.pre_token) {
-            return Err(Error::ParseErr(fmt_err!(
+            return Err(Error::Parse(fmt_err!(
                 "No prefix Operator Func for: {:?}",
                 &self.pre_token
             )));
@@ -1217,9 +1203,7 @@ impl Parser {
         let mut lhs = match self.parse_prefix_expr()? {
             Some(exp) => exp,
             None => {
-                return Err(Error::ParseErr(fmt_err!(
-                    "ParsePrefixExpression exp is None"
-                )));
+                return Err(Error::Parse(fmt_err!("ParsePrefixExpression exp is None")));
             }
         };
 
@@ -1241,16 +1225,15 @@ impl Parser {
                 self.next_token();
 
                 Ok(Some(Expression::Operation(Operation::Not(Box::new(
-                    self.parse_expression(Precedence::Prefix).map_err(|_| {
-                        Error::ParseErr(fmt_err!("Operation::Not exp is not valid!"))
-                    })?,
+                    self.parse_expression(Precedence::Prefix)
+                        .map_err(|_| Error::Parse(fmt_err!("Operation::Not exp is not valid!")))?,
                 )))))
             }
             Token::Add => {
                 self.next_token();
                 Ok(Some(Expression::Operation(Operation::Assert(Box::new(
                     self.parse_expression(Precedence::Prefix).map_err(|_| {
-                        Error::ParseErr(fmt_err!("Operation::Assert exp is not valid!"))
+                        Error::Parse(fmt_err!("Operation::Assert exp is not valid!"))
                     })?,
                 )))))
             }
@@ -1258,7 +1241,7 @@ impl Parser {
                 self.next_token();
                 Ok(Some(Expression::Operation(Operation::Negate(Box::new(
                     self.parse_expression(Precedence::Prefix).map_err(|_| {
-                        Error::ParseErr(fmt_err!("Operation::Negate exp is not valid!"))
+                        Error::Parse(fmt_err!("Operation::Negate exp is not valid!"))
                     })?,
                 )))))
             }
@@ -1269,7 +1252,7 @@ impl Parser {
                         match n.parse::<f64>() {
                             Ok(n) => n,
                             Err(e) => {
-                                return Err(Error::ParseErr(fmt_err!("{}", e)));
+                                return Err(Error::Parse(fmt_err!("{}", e)));
                             }
                         },
                     ))))
@@ -1278,7 +1261,7 @@ impl Parser {
                         match n.parse::<i64>() {
                             Ok(n) => n,
                             Err(e) => {
-                                return Err(Error::ParseErr(fmt_err!("{}", e)));
+                                return Err(Error::Parse(fmt_err!("{}", e)));
                             }
                         },
                     ))))
@@ -1305,7 +1288,7 @@ impl Parser {
                                 i
                             }
                             _ => {
-                                return Err(Error::ParseErr(fmt_err!("expected: Token::Ident")));
+                                return Err(Error::Parse(fmt_err!("expected: Token::Ident")));
                             }
                         },
                     )))
@@ -1317,13 +1300,13 @@ impl Parser {
                 Keyword::True => Ok(Some(Expression::Literal(Literal::Bool(true)))),
                 Keyword::False => Ok(Some(Expression::Literal(Literal::Bool(false)))),
                 Keyword::Null => Ok(Some(Expression::Literal(Literal::Null))),
-                _ => Err(Error::ParseErr(fmt_err!(
+                _ => Err(Error::Parse(fmt_err!(
                     "No prefixOperatorFunc for {}",
                     self.pre_token
                 ))),
             },
 
-            _ => Err(Error::ParseErr(fmt_err!(
+            _ => Err(Error::Parse(fmt_err!(
                 "No prefixOperatorFunc for {}",
                 self.pre_token
             ))),
@@ -1337,9 +1320,11 @@ impl Parser {
                 self.next_token();
                 Ok(Expression::Operation(Operation::Add(
                     Box::new(exp),
-                    Box::new(self.parse_expression(precedence).map_err(|_| {
-                        Error::ParseErr(fmt_err!("Operation::Add exp is not valid!"))
-                    })?),
+                    Box::new(
+                        self.parse_expression(precedence).map_err(|_| {
+                            Error::Parse(fmt_err!("Operation::Add exp is not valid!"))
+                        })?,
+                    ),
                 )))
             }
             Token::Equal => {
@@ -1349,7 +1334,7 @@ impl Parser {
                 Ok(Expression::Operation(Operation::Equal(
                     Box::new(exp),
                     Box::new(self.parse_expression(precedence).map_err(|_| {
-                        Error::ParseErr(fmt_err!("Operation::Equal exp is not valid!"))
+                        Error::Parse(fmt_err!("Operation::Equal exp is not valid!"))
                     })?),
                 )))
             }
@@ -1360,7 +1345,7 @@ impl Parser {
                 Ok(Expression::Operation(Operation::GreaterThan(
                     Box::new(exp),
                     Box::new(self.parse_expression(precedence).map_err(|_| {
-                        Error::ParseErr(fmt_err!("Operation::GreaterThan exp is not valid!"))
+                        Error::Parse(fmt_err!("Operation::GreaterThan exp is not valid!"))
                     })?),
                 )))
             }
@@ -1371,7 +1356,7 @@ impl Parser {
                 Ok(Expression::Operation(Operation::GreaterThanOrEqual(
                     Box::new(exp),
                     Box::new(self.parse_expression(precedence).map_err(|_| {
-                        Error::ParseErr(fmt_err!("Operation::GreaterThanOrEqual is not valid!"))
+                        Error::Parse(fmt_err!("Operation::GreaterThanOrEqual is not valid!"))
                     })?),
                 )))
             }
@@ -1382,7 +1367,7 @@ impl Parser {
                 Ok(Expression::Operation(Operation::LessThan(
                     Box::new(exp),
                     Box::new(self.parse_expression(precedence).map_err(|_| {
-                        Error::ParseErr(fmt_err!("Operation::LessThan exp is not valid!"))
+                        Error::Parse(fmt_err!("Operation::LessThan exp is not valid!"))
                     })?),
                 )))
             }
@@ -1393,7 +1378,7 @@ impl Parser {
                 Ok(Expression::Operation(Operation::LessThanOrEqual(
                     Box::new(exp),
                     Box::new(self.parse_expression(precedence).map_err(|_| {
-                        Error::ParseErr(fmt_err!("Operation::LessThanOrEqual exp is not valid!"))
+                        Error::Parse(fmt_err!("Operation::LessThanOrEqual exp is not valid!"))
                     })?),
                 )))
             }
@@ -1404,7 +1389,7 @@ impl Parser {
                 Ok(Expression::Operation(Operation::Subtract(
                     Box::new(exp),
                     Box::new(self.parse_expression(precedence).map_err(|_| {
-                        Error::ParseErr(fmt_err!("Operation::Minus exp is not valid!"))
+                        Error::Parse(fmt_err!("Operation::Minus exp is not valid!"))
                     })?),
                 )))
             }
@@ -1415,7 +1400,7 @@ impl Parser {
                 Ok(Expression::Operation(Operation::NotEqual(
                     Box::new(exp),
                     Box::new(self.parse_expression(precedence).map_err(|_| {
-                        Error::ParseErr(fmt_err!("Operation::NotEqual exp is not valid!"))
+                        Error::Parse(fmt_err!("Operation::NotEqual exp is not valid!"))
                     })?),
                 )))
             }
@@ -1425,9 +1410,11 @@ impl Parser {
 
                 Ok(Expression::Operation(Operation::And(
                     Box::new(exp),
-                    Box::new(self.parse_expression(precedence).map_err(|_| {
-                        Error::ParseErr(fmt_err!("Operation::And exp is not valid!"))
-                    })?),
+                    Box::new(
+                        self.parse_expression(precedence).map_err(|_| {
+                            Error::Parse(fmt_err!("Operation::And exp is not valid!"))
+                        })?,
+                    ),
                 )))
             }
             Token::KeyWord(Keyword::Or) => {
@@ -1436,9 +1423,11 @@ impl Parser {
 
                 Ok(Expression::Operation(Operation::Or(
                     Box::new(exp),
-                    Box::new(self.parse_expression(precedence).map_err(|_| {
-                        Error::ParseErr(fmt_err!("Operation::Or exp is not valid!"))
-                    })?),
+                    Box::new(
+                        self.parse_expression(precedence).map_err(|_| {
+                            Error::Parse(fmt_err!("Operation::Or exp is not valid!"))
+                        })?,
+                    ),
                 )))
             }
             Token::KeyWord(Keyword::Like) => {
@@ -1448,7 +1437,7 @@ impl Parser {
                 Ok(Expression::Operation(Operation::Like(
                     Box::new(exp),
                     Box::new(self.parse_expression(precedence).map_err(|_| {
-                        Error::ParseErr(fmt_err!("Operation::Like exp is not valid!"))
+                        Error::Parse(fmt_err!("Operation::Like exp is not valid!"))
                     })?),
                 )))
             }
@@ -1458,7 +1447,7 @@ impl Parser {
                 Ok(Expression::Operation(Operation::Modulo(
                     Box::new(exp),
                     Box::new(self.parse_expression(precedence).map_err(|_| {
-                        Error::ParseErr(fmt_err!("Operation::Percent exp is not valid!"))
+                        Error::Parse(fmt_err!("Operation::Percent exp is not valid!"))
                     })?),
                 )))
             }
@@ -1468,7 +1457,7 @@ impl Parser {
                 Ok(Expression::Operation(Operation::Multiply(
                     Box::new(exp),
                     Box::new(self.parse_expression(precedence).map_err(|_| {
-                        Error::ParseErr(fmt_err!("Operation::Asterisk exp is not valid!"))
+                        Error::Parse(fmt_err!("Operation::Asterisk exp is not valid!"))
                     })?),
                 )))
             }
@@ -1478,7 +1467,7 @@ impl Parser {
                 Ok(Expression::Operation(Operation::Divide(
                     Box::new(exp),
                     Box::new(self.parse_expression(precedence).map_err(|_| {
-                        Error::ParseErr(fmt_err!("Operation::Slash exp is not valid!"))
+                        Error::Parse(fmt_err!("Operation::Slash exp is not valid!"))
                     })?),
                 )))
             }
@@ -1487,7 +1476,7 @@ impl Parser {
                 match exp {
                     Expression::Literal(Literal::String(s)) => s,
                     _ => {
-                        return Err(Error::ParseErr(fmt_err!(
+                        return Err(Error::Parse(fmt_err!(
                             "Operation::LeftParen exp is not Literal::String"
                         )));
                     }
@@ -1502,7 +1491,7 @@ impl Parser {
                                 vec![Expression::Literal(Literal::All)]
                             }
                             _ => {
-                                return Err(Error::ParseErr(fmt_err!(
+                                return Err(Error::Parse(fmt_err!(
                                     "Operation::LeftParen exp is not Literal::String"
                                 )));
                             }
@@ -1516,14 +1505,12 @@ impl Parser {
                     _ => match self.parse_expression_list()? {
                         Some(exprs) => exprs,
                         None => {
-                            return Err(Error::ParseErr(fmt_err!(
-                                "Operation::LeftParen exp is None"
-                            )));
+                            return Err(Error::Parse(fmt_err!("Operation::LeftParen exp is None")));
                         }
                     },
                 },
             )),
-            _ => Err(Error::ParseErr(fmt_err!(
+            _ => Err(Error::Parse(fmt_err!(
                 "No infixOperatorFunc for {}",
                 self.pre_token
             ))),
@@ -1540,17 +1527,19 @@ impl Parser {
         }
 
         self.next_token();
-        exprs
-            .push(self.parse_expression(Precedence::Lowest).map_err(|_| {
-                Error::ParseErr(fmt_err!("Operation::LeftParen exp is not valid!"))
-            })?);
+        exprs.push(
+            self.parse_expression(Precedence::Lowest)
+                .map_err(|_| Error::Parse(fmt_err!("Operation::LeftParen exp is not valid!")))?,
+        );
 
         while self.peek_if_token(Token::Comma) {
             self.next_token();
 
-            exprs.push(self.parse_expression(Precedence::Lowest).map_err(|_| {
-                Error::ParseErr(fmt_err!("parse_expression_list exp is not valid!"))
-            })?);
+            exprs.push(
+                self.parse_expression(Precedence::Lowest).map_err(|_| {
+                    Error::Parse(fmt_err!("parse_expression_list exp is not valid!"))
+                })?,
+            );
         }
 
         if !self.peek_if_token(Token::RightParen) {
