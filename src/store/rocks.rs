@@ -48,7 +48,7 @@ impl Rocks {
         self.handle.get(key)
     }
 
-    pub(crate) fn iter<'a>(&self, mode: IteratorMode<'a>) -> RocksIter {
+    pub(crate) fn iter(&self, mode: IteratorMode<'_>) -> RocksIter {
         self.handle.iterator(mode)
     }
 

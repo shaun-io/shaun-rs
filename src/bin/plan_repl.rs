@@ -1,8 +1,8 @@
 use std::{io::Write, sync::Arc};
 
 use shaun::{
-    catalog::{self, CataLog},
-    parser::{stmt::Statement, Parser},
+    catalog::CataLog,
+    parser::Parser,
     planner::Planner,
 };
 

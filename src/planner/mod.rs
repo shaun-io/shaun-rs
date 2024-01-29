@@ -7,7 +7,8 @@ mod context;
 pub mod logical_plan;
 mod plan_expression;
 mod plan_select;
-mod plan_table;
+mod plan_createtable;
+mod optimize;
 
 use crate::error::Result;
 
@@ -23,6 +24,14 @@ impl Planner {
             catalog: Arc::clone(catalog),
             context: PlanContext::new(),
         }
+    }
+
+    /// planner will catch the sql metainfo
+    /// use it after reset_ctx
+    pub fn reset_ctx(&mut self) -> &mut Self {
+        self.context = PlanContext::new();
+
+        self
     }
 
     pub fn plan(&mut self, ast: &Statement) -> Result<PlanNode> {
@@ -133,7 +142,7 @@ mod tests {
                 assert!(false);
             }
         }
-        planner.context = PlanContext::new();
+        planner.reset_ctx();
         match parser
             .update(
                 r#"select user.id, user from user join cccc on cccc.id = user.id where cccc.id > 10"#,
@@ -207,5 +216,10 @@ mod tests {
                 assert!(false);
             }
         }
+    }
+
+    #[test]
+    fn test_multi_join() {
+
     }
 }

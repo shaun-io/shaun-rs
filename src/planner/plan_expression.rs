@@ -40,7 +40,7 @@ impl Planner {
                 },
                 None => {
                     // eg: `SELECT * FROM t1 JOIN t2 ON (t1.)column1 = (t2.)column2;`
-                    // when plan the expression, we don't known the column_name belone.
+                    // plan the expression, but don't known the column_name belone.
                     match self.context.tablenames_by_columnname(&column_name) {
                         Some(table_names) => {
                             if table_names.len() == 1 {

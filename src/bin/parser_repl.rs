@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use shaun::parser::{stmt::Statement, Parser};
+use shaun::parser::Parser;
 
 const PARSER_HISTORY_NAME: &str = ".shaun_parser_history";
 
