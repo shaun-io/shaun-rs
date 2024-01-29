@@ -1,8 +1,9 @@
-use std::io;
-use std::io::Write;
+use std::{io, io::Write};
 
-use shaun::parser::lexer::{self};
-use shaun::parser::token::Token;
+use shaun::parser::{
+    lexer::{self},
+    token::Token,
+};
 
 fn main() {
     env_logger::Builder::new()

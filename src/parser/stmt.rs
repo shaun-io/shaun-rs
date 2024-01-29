@@ -1,8 +1,7 @@
 use std::collections::BTreeMap;
 
-use crate::parser::column::Column;
-
 use super::expression::Expression;
+use crate::parser::column::Column;
 
 #[derive(PartialEq, Debug)]
 pub enum Statement {
@@ -20,6 +19,7 @@ pub enum Statement {
     CreateIndex(CreateIndexStmt),
     ShowDatabase,
     ShowTables,
+    CreateDatabase(String),
     Set(SetStmt),
     DescribeTable(String),
 }

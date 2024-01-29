@@ -1,5 +1,4 @@
-use super::keyword::Keyword;
-use super::token::Token;
+use super::{keyword::Keyword, token::Token};
 use crate::parser::keyword::find_keyword;
 
 const STOP_CHAR: char = 0 as char;

@@ -1,5 +1,7 @@
-use super::keyword::Keyword;
-use super::token::{self, Token};
+use super::{
+    keyword::Keyword,
+    token::{self, Token},
+};
 
 #[derive(Eq, PartialEq, Debug, PartialOrd, Ord)]
 pub enum Precedence {

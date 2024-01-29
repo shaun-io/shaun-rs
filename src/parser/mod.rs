@@ -1,38 +1,39 @@
 mod column;
 
 mod data_type;
-mod expression;
+pub mod expression;
 mod keyword;
 pub mod lexer;
-mod operation;
+pub mod operation;
 mod operator;
-mod stmt;
+pub mod stmt;
 pub mod token;
 
-use crate::parser::operator::{is_infix_oper, is_prefix_oper};
-use crate::parser::stmt::{AlterStmt, AlterType, CreateIndexStmt, DeleteTableStmt};
-use crate::parser::{operation::Operation, operator::match_precedence};
+use std::collections::BTreeMap;
 
-use crate::{
-    error::{Error, Result},
-    fmt_err,
-};
 use data_type::DataType;
-use expression::Expression;
-use expression::Literal;
+use expression::{Expression, Literal};
 use keyword::Keyword;
 use lexer::Lexer;
-use std::collections::BTreeMap;
 use stmt::Statement;
 use token::Token;
 
-use self::stmt::{
-    DropTableStmt, ExplainStmt, SetStmt, SetVariableType, TransactionIsolationLevel, UpdateStmt,
-};
 use self::{
     column::Column,
     operator::Precedence,
-    stmt::{FromItem, JoinType, OrderByType, SelectStmt},
+    stmt::{
+        DropTableStmt, ExplainStmt, FromItem, JoinType, OrderByType, SelectStmt, SetStmt,
+        SetVariableType, TransactionIsolationLevel, UpdateStmt,
+    },
+};
+use crate::{
+    error::{Error, Result},
+    fmt_err,
+    parser::{
+        operation::Operation,
+        operator::{is_infix_oper, is_prefix_oper, match_precedence},
+        stmt::{AlterStmt, AlterType, CreateIndexStmt, DeleteTableStmt},
+    },
 };
 
 pub struct Parser {
@@ -200,7 +201,6 @@ impl Parser {
                 Token::KeyWord(Keyword::Column) => {
                     // ALTER TABLE table_name ADD COLUMN new_column_name column_data_type
                     self.next_token();
-                    dbg!(&self.pre_token);
                     let new_column = self.parse_column()?;
 
                     Ok(Statement::Alter(AlterStmt {
@@ -537,6 +537,11 @@ impl Parser {
             Token::KeyWord(Keyword::Table) => self.parse_create_table_stmt(),
             Token::KeyWord(Keyword::Unique) | Token::KeyWord(Keyword::Index) => {
                 self.parse_create_index_stmt()
+            }
+            Token::KeyWord(Keyword::Database) => {
+                self.next_token();
+                
+                Ok(Statement::CreateDatabase(self.next_ident()?))
             }
             _ => Err(Error::Parse(fmt_err!(
                 "unexpected token: {}",
@@ -1474,7 +1479,8 @@ impl Parser {
             // 如果 ( 是一个中缀运算符, 则是一个函数
             Token::LeftParen => Ok(Expression::Function(
                 match exp {
-                    Expression::Literal(Literal::String(s)) => s,
+                    // uppercase all function_name in parser
+                    Expression::Literal(Literal::String(s)) => s.to_uppercase(),
                     _ => {
                         return Err(Error::Parse(fmt_err!(
                             "Operation::LeftParen exp is not Literal::String"
@@ -1571,11 +1577,9 @@ pub mod test {
         };
     }
 
-    use std::vec;
+    use std::{io::Write, vec};
 
-    use super::stmt::*;
-    use super::*;
-    use std::io::Write;
+    use super::{stmt::*, *};
 
     #[cfg(test)]
     static LOG_INIT: std::sync::Once = std::sync::Once::new();

@@ -1,5 +1,4 @@
-use crate::parser::expression::Expression;
-use crate::parser::DataType;
+use crate::parser::{expression::Expression, DataType};
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Column {

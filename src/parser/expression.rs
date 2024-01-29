@@ -1,4 +1,8 @@
-use crate::parser::operation::Operation;
+use crate::{
+    error::{Error, Result},
+    fmt_err,
+    parser::operation::Operation,
+};
 
 #[derive(PartialEq, Debug, Clone)]
 // 字面量
@@ -20,13 +24,65 @@ pub enum Expression {
     Operation(Operation),
 }
 
+impl Expression {
+    pub fn has_aggregation(&self) -> Result<bool> {
+        Ok(match self {
+            Self::Field(..) => false,
+            Self::Column(_) => false,
+            Self::Literal(_) => false,
+            Self::Function(name, args) => {
+                match name.clone().to_uppercase().as_str() {
+                    "SUM" | "AVG" | "COUNT" | "MIN" | "ONLY" => return Ok(true),
+                    _ => return Err(Error::Parse(fmt_err!("function_name: {name} is not valid"))),
+                };
+            }
+            Self::Operation(op) => match op {
+                Operation::And(l, r) => l.has_aggregation()? || r.has_aggregation()?,
+                Operation::Not(e) => e.has_aggregation()?,
+                Operation::Or(l, r) => l.has_aggregation()? || r.has_aggregation()?,
+                Operation::NotEqual(l, r) => l.has_aggregation()? || r.has_aggregation()?,
+                Operation::Equal(l, r) => l.has_aggregation()? || r.has_aggregation()?,
+                Operation::GreaterThan(l, r) => l.has_aggregation()? || r.has_aggregation()?,
+                Operation::GreaterThanOrEqual(l, r) => {
+                    l.has_aggregation()? || r.has_aggregation()?
+                }
+                Operation::LessThan(l, r) => l.has_aggregation()? || r.has_aggregation()?,
+                Operation::LessThanOrEqual(l, r) => l.has_aggregation()? || r.has_aggregation()?,
+                Operation::IsNull(e) => e.has_aggregation()?,
+                Operation::Add(l, r) => l.has_aggregation()? || r.has_aggregation()?,
+                Operation::Subtract(l, r) => l.has_aggregation()? || r.has_aggregation()?,
+                Operation::Multiply(l, r) => l.has_aggregation()? || r.has_aggregation()?,
+                Operation::Divide(l, r) => l.has_aggregation()? || r.has_aggregation()?,
+                Operation::Assert(e) => e.has_aggregation()?,
+                Operation::Like(l, r) => l.has_aggregation()? || r.has_aggregation()?,
+                Operation::Negate(e) => e.has_aggregation()?,
+                Operation::BitWiseNot(e) => e.has_aggregation()?,
+                Operation::Modulo(l, r) => l.has_aggregation()? || r.has_aggregation()?,
+            },
+        })
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::parser::stmt::*;
-    use crate::parser::test::init;
-    use crate::parser::Parser;
     use log::error;
+
+    use super::*;
+    use crate::parser::{stmt::*, test::init, Parser};
+
+    #[test]
+    fn has_aggreagtion_test() {
+        let mut expr = Expression::Column(10);
+        assert_eq!(expr.has_aggregation().unwrap(), false);
+        expr = Expression::Operation(Operation::And(
+            Box::new(Expression::Function(
+                "AVG".to_owned(),
+                vec![Expression::Literal(Literal::All)],
+            )),
+            Box::new(Expression::Column(1)),
+        ));
+        assert_eq!(expr.has_aggregation().unwrap(), true);
+    }
 
     #[test]
     fn parse_expression_test() {
@@ -95,9 +151,9 @@ mod test {
         }
 
         //            -
-        //         +      3
-        //      *      /
-        //   *    3 456  4
+        //         + 3
+        //      * /
+        //   * 3 456  4
         // 1   2
         parser.update("SELECT 1 * 2 * 3 + 456 / 4 - 3 c1;");
         let mut res_expr = Expression::Operation(Operation::Subtract(
