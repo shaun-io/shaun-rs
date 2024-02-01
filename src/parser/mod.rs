@@ -1,12 +1,12 @@
 mod column;
 
 mod data_type;
-mod expression;
+pub mod expression;
 mod keyword;
 pub mod lexer;
 mod operation;
 mod operator;
-mod stmt;
+pub(crate) mod stmt;
 pub mod token;
 
 use crate::parser::operator::{is_infix_oper, is_prefix_oper};
